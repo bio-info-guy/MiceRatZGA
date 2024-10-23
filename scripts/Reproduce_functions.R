@@ -1190,7 +1190,7 @@ mast_diff <- function(obj = NULL, plot = F, ct = NULL, meta = NULL, FCThresh = l
     other <- paste("cellType", cnd[which(cnd != control)], sep = "")
  
     colData(sca)$cellType <- cond
-    if (corr_det) {
+    if (corr_det) { 
       zlmCond <- zlm(~ cellType + sensitivity, sca, useContinuousBayes = TRUE)
     } else {
       zlmCond <- zlm(~cellType, sca, useContinuousBayes = TRUE)
