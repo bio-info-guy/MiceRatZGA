@@ -1186,16 +1186,9 @@ mast_diff <- function(obj = NULL, plot = F, ct = NULL, meta = NULL, FCThresh = l
   for (cnd in comparisons) {
     sca <- sca0[, colData(sca0)$cellType %in% cnd]
     cond <- factor(colData(sca)$cellType)
-    if ("mouseEgg" %in% cnd) {
-      cond <- relevel(cond, "mouseEgg")
-      other <- paste("cellType", cnd[which(cnd != "mouseEgg")], sep = "")
-    } else {
-      cond <- relevel(cond, "ratEgg")
-      if (cnd[2] == "ratEgg") {
-        cnd <- cnd[c(2, 1)]
-      }
-      other <- paste("cellType", cnd[which(cnd != "ratEgg")], sep = "")
-    }
+    cond <- relevel(cond, control)
+    other <- paste("cellType", cnd[which(cnd != control)], sep = "")
+ 
     colData(sca)$cellType <- cond
     if (corr_det) {
       zlmCond <- zlm(~ cellType + sensitivity, sca, useContinuousBayes = TRUE)
@@ -1231,7 +1224,7 @@ mast_diff <- function(obj = NULL, plot = F, ct = NULL, meta = NULL, FCThresh = l
     fcHurdleSig$Log2FC <- fcHurdleSig$coef
     fcHurdle <- data.frame(fcHurdle, row.names = 1)
     fcHurdle$Log2FC <- fcHurdle$coef
-    if (include_filt_as_NA) {
+    if (include_filt_as_NA) { 
       filt_gene_res <- matrix(nrow = length(filt_genes), ncol = ncol(fcHurdleSig))
       row.names(filt_gene_res) <- filt_genes
       colnames(filt_gene_res) <- colnames(fcHurdleSig)
