@@ -1,24 +1,22 @@
 # Load packages
 suppressPackageStartupMessages({
+  library(cowplot)
+  library(scales)
   library(betareg)
+  library(ggpubr)
   library(tidyr)
   library(qvalue)
   library(pbapply)
   library(lmtest)
   library(biomaRt)
-  library(BASiCS)
-  library(scDD)
-  library(BPSC)
   library(ggrepel)
-  library(apeglm)
+  library(reticulate)
   library(heatmap3)
   library(ggplot2)
   library(ggfortify)
   library(stringr)
   library(RColorBrewer)
   library(MKmisc)
-  library(DESeq2)
-  library(Rtsne)
   library(MAST)
   library(reticulate)
   library(edgeR)
@@ -32,7 +30,6 @@ suppressPackageStartupMessages({
   library(NMF)
   library(rsvd)
   library(RColorBrewer)
-  library(MAST)
   library(pcaMethods)
   library(segmented)
   library(robust)
@@ -43,10 +40,8 @@ suppressPackageStartupMessages({
   library(Seurat)
   require(ReactomePA)
   require(clusterProfiler)
-  require(org.Sc.sgd.db)
   require(meshes)
   library(msigdbr)
-  library(Seurat)
   library(doParallel)
   library(grid)
   library(gridExtra)
@@ -61,11 +56,19 @@ suppressPackageStartupMessages({
   library(DEXSeq)
   library(trackViewer)
   library(GenomicFeatures)
+  require(ReactomePA)
+  require(clusterProfiler)
+  require(meshes)
+  require(dplyr)
+  require(GenomicRanges)
+  require(trackViewer)
+  require(ggtree)
+  require(aplot)
 })
 reticulate::use_condaenv("scvelo")
-scv <- import("scvelo")
+scv <- reticulate::import("scvelo")
 
-FILES <- "/Users/ysu13/My Drive/mouse_rat/star_based/dataset/"
+FILES <- paste(getwd(), "/dataset/", sep = '')
 # Define Global colors and conditions
 DOT_COLOR <- c(
   "#293acc",
@@ -160,79 +163,59 @@ read_expression <- function(dir, mode = "salmon", tx2gene = NULL, tpmType = "no"
 }
 
 
-read_filter_splice <- function(splice_f, unsplic_f) {
-  spliced <- t(read.csv(splice_f, header = T, row.names = 1))
-  spliced_raw <- t(read.csv(splice_f, header = T, row.names = 1))
-  unsplic <- t(read.csv(unsplic_f, header = T, row.names = 1))
-  unsplic_raw <- t(read.csv(unsplic_f, header = T, row.names = 1))
-  grp1 <- grepl(pattern = "F", colnames(spliced))
-  grp2 <- grepl(pattern = "U", colnames(spliced))
-  grp1_filt_s <- rowMeans(spliced[, grp1]) > 5 & rowSums(spliced[, grp1] > 0) > sum(grp1) * 0.1
-  grp1_filt_u <- rowMeans(unsplic[, grp1]) > 1 & rowSums(unsplic[, grp1] > 0) > sum(grp1) * 0.1
-
-  grp2_filt_s <- rowMeans(spliced[, grp2]) > 5 & rowSums(spliced[, grp2] > 0) > sum(grp2) * 0.1
-  grp2_filt_u <- rowMeans(unsplic[, grp2]) > 1 & rowSums(unsplic[, grp2] > 0) > sum(grp2) * 0.1
-
-  spliced <- spliced[(grp1_filt_s & grp1_filt_u) | (grp2_filt_s & grp2_filt_u), ]
-  unsplic <- unsplic[(grp1_filt_s & grp1_filt_u) | (grp2_filt_s & grp2_filt_u), ]
 
 
-  test_cor <- do.call(rbind, lapply(1:nrow(spliced), FUN = function(x) {
-    c(
-      "pc" = cor(spliced[x, ], unsplic[x, ]),
-      "sc" = cor(spliced[x, ], unsplic[x, ], method = "spearman"),
-      "kc" = cor(spliced[x, ], unsplic[x, ], method = "kendall"),
-      "rsq" = summary(lm(spliced[x, ] ~ unsplic[x, ]))$adj.r.squared,
-      "err.rat" = sd(unsplic[x, ]) / sd(spliced[x, ]),
-      "expr.rat" = mean(unsplic[x, ]) / mean(spliced[x, ])
-    )
-  }))
-  row.names(test_cor) <- row.names(spliced)
-  test_cor <- data.frame(test_cor)
-  genes <- row.names(subset(test_cor, rsq > 0.1 & kc > 0.1 & err.rat > 0.005 & err.rat < 5))
-  return(list(spliced = spliced_raw, unspliced = unsplic_raw, metrics = test_cor, genes = genes))
-}
-
-
-read_filter_splice_loom <- function(loomf, samples = NULL) {
-  loom <- scv$read_loom(loomf)
-  spliced <- t(as.matrix(loom$layers["spliced"]))
-  colnames(spliced) <- sapply(strsplit(sapply(strsplit(loom$obs_names$values, ":"), function(x) x[2]), "_"), function(x) x[1])
-  row.names(spliced) <- loom$var_names$values
-  unsplic <- t(as.matrix(loom$layers["unspliced"]) + as.matrix(loom$layers["spanning"]))
-  colnames(unsplic) <- colnames(spliced)
-  row.names(unsplic) <- loom$var_names$values
+# read from velocyto loom files using scvelo and reticulate
+read_filter_splice_loom <- function(loomd, samples = NULL, filt_samp_by_cor = 0, f_format = c('kb_loom', 'velocyto_loom', 'csv'), splice_files = NULL) {
+  f_format <- match.arg(f_format)
+  if(f_format == 'velocyto_loom'){
+    loom <- scv$read_loom(loomd)
+    spliced <- t(as.matrix(loom$layers["spliced"]))
+    colnames(spliced) <- sapply(strsplit(sapply(strsplit(loom$obs_names$values, ":"), function(x) x[2]), "_"), function(x) x[1])
+    row.names(spliced) <- loom$var_names$values
+    unsplic <- t(as.matrix(loom$layers["unspliced"]) + as.matrix(loom$layers["spanning"]))
+    colnames(unsplic) <- colnames(spliced)
+    row.names(unsplic) <- loom$var_names$values
+  }else if(f_format == 'kb_loom'){
+    loom <- scv$read_loom(paste(loomd, 'adata.loom', sep = '/'))
+    spliced <- t(as.matrix(loom$layers["spliced"]) + as.matrix(loom$layers["ambiguous"]))
+    colnames(spliced) <- row.names(read.csv(paste(loomd, 'samples.txt', sep = '/'), sep ='\t', row.names = 1, header = F))
+    row.names(spliced) <- loom$var$target_name
+    unsplic <- t(as.matrix(loom$layers["unspliced"]))
+    colnames(unsplic) <- colnames(spliced)
+    row.names(unsplic) <- loom$var$target_name
+  }else{
+    spliced <- do.call(cbind, lapply(splice_files['splice'], function(x) {read.csv(x, header = T, row.names = 1)}))
+    unsplic <- do.call(cbind, lapply(splice_files['unspliced'], function(x) {read.csv(x, header = T, row.names = 1)}))
+  }
+  spliced_raw <- spliced
+  unsplic_raw <- unsplic
   if (!is.null(samples)) {
     unsplic <- unsplic[, samples]
     spliced <- spliced[, samples]
   }
-  spliced_raw <- spliced
-  unsplic_raw <- unsplic
+  
 
   grp1 <- which(grepl(pattern = "F", colnames(spliced)))
   grp2 <- which(grepl(pattern = "U", colnames(spliced)))
 
-  grp1 <- grp1[colMeans(cor(unsplic_raw[, grp1], unsplic_raw[, grp1])) > 0.7]
-  grp2 <- grp2[colMeans(cor(unsplic_raw[, grp2], unsplic_raw[, grp2])) > 0.7]
-  spliced_raw <- spliced_raw[, c(grp1, grp2)]
-  unsplic_raw <- unsplic_raw[, c(grp1, grp2)]
+  grp1 <- grp1[colMeans(cor(unsplic[, grp1], unsplic[, grp1])) > filt_samp_by_cor]
+  grp2 <- grp2[colMeans(cor(unsplic[, grp2], unsplic[, grp2]))> filt_samp_by_cor]
 
 
-  grp1_filt_s <- rowMeans(spliced[, grp1]) > 5 & rowSums(spliced[, grp1] > 0) > length(grp1) * 0.5
-  grp1_filt_u <- rowMeans(unsplic[, grp1]) > 1 & rowSums(unsplic[, grp1] > 0) > length(grp1) * 0.5
+  grp1_filt_s <- rowMeans(spliced[, grp1]) > 5 & rowSums(spliced[, grp1] > 0) > length(grp1) * 0.2
+  grp1_filt_u <- rowMeans(unsplic[, grp1]) > 1 & rowSums(unsplic[, grp1] > 0) > length(grp1) * 0.2
 
-  grp2_filt_s <- rowMeans(spliced[, grp2]) > 5 & rowSums(spliced[, grp2] > 0) > length(grp2) * 0.5
-  grp2_filt_u <- rowMeans(unsplic[, grp2]) > 1 & rowSums(unsplic[, grp2] > 0) > length(grp2) * 0.5
+  grp2_filt_s <- rowMeans(spliced[, grp2]) > 5 & rowSums(spliced[, grp2] > 0) > length(grp2) * 0.2
+  grp2_filt_u <- rowMeans(unsplic[, grp2]) > 1 & rowSums(unsplic[, grp2] > 0) > length(grp2) * 0.2
 
-  print(dim(unsplic))
-  print(dim(spliced))
+
   spliced <- spliced[(grp1_filt_s & grp1_filt_u) | (grp2_filt_s & grp2_filt_u), ]
   unsplic <- unsplic[(grp1_filt_s & grp1_filt_u) | (grp2_filt_s & grp2_filt_u), ]
 
   unsplic <- unsplic[, c(grp1, grp2)]
   spliced <- spliced[, c(grp1, grp2)]
-  print(dim(unsplic))
-  print(dim(spliced))
+
 
   test_cor <- do.call(rbind, lapply(1:nrow(spliced), FUN = function(x) {
     c(
@@ -247,7 +230,7 @@ read_filter_splice_loom <- function(loomf, samples = NULL) {
   row.names(test_cor) <- row.names(spliced)
   test_cor <- data.frame(test_cor)
   genes <- row.names(subset(test_cor, rsq > 0.1 & kc > 0.1 & err.rat > 0.005 & err.rat < 5))
-  return(list(spliced = spliced_raw, unspliced = unsplic_raw, metrics = test_cor, genes = genes))
+  return(list(spliced_raw = spliced_raw, unspliced_raw = unsplic_raw, spliced = spliced, unspliced=unsplic, metrics = test_cor, genes = genes))
 }
 
 
@@ -625,8 +608,7 @@ options(ucscChromosomeNames = FALSE)
 
 
 plot_utr_coverage <- function(gene, utr_res, txdb, bw_file_list, cols, cell_names, y_margin = -0.05, y_height = 2.5, file_name_suffix = "", loci = NULL) {
-  require(GenomicRanges)
-  require(trackViewer)
+
   if (is.null(loci)) {
     loci <- utr_res[utr_res$gene_short_names == gene, "loci"]
   }
@@ -662,6 +644,7 @@ plot_utr_coverage <- function(gene, utr_res, txdb, bw_file_list, cols, cell_name
   temp_score <- sapply(bw_file_list, FUN = function(x) {
     importScore(x, format = "BigWig", ranges = gr)
   })
+  print('a')
   # setTrackStyleParam(temp_score, "color", c(DOT_COLOR['mouseZygote'], DOT_COLOR['mouseEgg']))
   # strand(trackList[['Mouse']]@dat) <- '+'
   # strand(trackList[['Mouse']]@dat2) <- '-'
@@ -814,6 +797,80 @@ plot_range_coverage <- function(txdb, bw_file_list, cols, cell_names, gene_name 
   return(list(vp = vp, gene = genes, gr_intron = gr_intron))
 }
 
+
+addGuideLine2 <- function(guideLine, col = "gray", lty = "dashed", lwd = 1, 
+                          vp = NULL, y_lim =c(0,1)) 
+{
+  if (missing(guideLine) | !(inherits(guideLine, c("numeric", 
+                                                   "integer"))) | length(guideLine) < 1) 
+    stop("guideLine is required as a numeric vector of coordinates of genome")
+  len <- length(guideLine)
+  trimLen <- function(obj, len) {
+    if (length(obj) < len) 
+      obj <- rep(obj, len)[1:len]
+    obj
+  }
+  vpmultiple <- FALSE
+  if (length(vp) > 0) {
+    stopifnot(is(vp, "viewport"))
+    if (is(vp, "vpTree")) {
+      vpmultiple <- TRUE
+    }
+  }
+  selectVP <- function(x, tree) {
+    xscales <- sapply(tree$children, function(.ele) {
+      seekViewport(names(.ele$children))
+      current.viewport()$xscale
+    }, simplify = FALSE)
+    xscales <- do.call(cbind, xscales)
+    i <- which(x >= xscales[1, ] & x <= xscales[2, ])
+    if (length(i) < 1) {
+      message(x, " out of the range.")
+      return(NULL)
+    }
+    seekViewport(paste0("panel.", i))
+    current.viewport()
+  }
+  col <- trimLen(col, len)
+  lty <- trimLen(lty, len)
+  lwd <- trimLen(lwd, len)
+  for (i in seq_along(guideLine)) {
+    if (vpmultiple) {
+      currentVP <- selectVP(guideLine[i], vp)
+      grid.lines(x = guideLine[i], y =  y_lim , gp = gpar(col = col[i], 
+                                                          lty = 'dashed', lwd = lwd[i], alpha = 0.8), default.units = "native")
+    }
+    else {
+      currentVP <- vp
+      grid.lines(x = guideLine[i], y =  y_lim , gp = gpar(col = col[i], 
+                                                          lty = 'dashed', lwd = lwd[i], alpha = 0.8), default.units = "native", 
+                 vp = currentVP)
+    }
+  }
+  i <- 1
+  while (i < length(guideLine)) {
+    if (vpmultiple) {
+      currentVP <- selectVP(guideLine[i], vp)
+      grid.lines(x = c(guideLine[i], guideLine[i+1]), y =  y_lim[1] , gp = gpar(col = col[i], 
+                                                                                lty = lty[i], lwd = lwd[i], alpha = 0.8), default.units = "native", vp = currentVP)
+      grid.lines(x = c(guideLine[i], guideLine[i+1]), y =  y_lim[2] , gp = gpar(col = col[i], 
+                                                                                lty = lty[i], lwd = lwd[i], alpha = 0.8), default.units = "native", vp = currentVP)
+    }
+    else {
+      currentVP <- vp
+      grid.lines(x = c(guideLine[i], guideLine[i+1]), y =  y_lim[1] , gp = gpar(col = col[i], 
+                                                                                lty = 'dashed', lwd = lwd[i], alpha = 0.8), default.units = "native", vp = currentVP)
+      grid.lines(x = c(guideLine[i], guideLine[i+1]), y =  y_lim[2], gp = gpar(col = col[i], 
+                                                                               lty = 'dashed', lwd = lwd[i], alpha = 0.8), default.units = "native", vp = currentVP)
+      #grid.lines(x=c(guideLine[1], guideLine[2]), y = 0.03, gp = gpar(col = 'black', 
+      #lty = 'solid', lwd = 2, alpha = 1), default.units = "native", arrow = arrow(type = 'closed', length = unit(0.1, "inches")), vp = currentVP)
+    }
+    i <- i+2
+  }
+  
+  return(invisible())
+  
+}
 
 
 # function for importing bigwig files
@@ -1151,14 +1208,14 @@ mast_diff <- function(obj = NULL, plot = F, ct = NULL, meta = NULL, FCThresh = l
   trgt_mat <- ct[, row.names(subset(meta, cellType == target))]
   trgt_mat <- trgt_mat[rowSums(trgt_mat > 0) > max(ncol(trgt_mat) * freq, min_cell_grp), ]
   genes <- union(row.names(ctrl_mat), row.names(trgt_mat))
-
+  #print(length(genes))
 
   genes <- intersect(row.names(ct)[which(rowSums(ct > 0) > min_cell)], genes)
   filt_genes <- setdiff(row.names(ct), genes)
   ct <- ct[genes, ]
-  print(length(filt_genes))
+  #print(length(filt_genes))
 
-  print(dim(ct))
+  #print(dim(ct))
   gene_f <- data.frame(row.names = row.names(ct), features = row.names(ct))
   freq_expressed <- freq
   FCTHRESHOLD <- FCThresh
@@ -1214,14 +1271,14 @@ mast_diff <- function(obj = NULL, plot = F, ct = NULL, meta = NULL, FCThresh = l
       fc <- subset(data.frame(summaryDt), component == "logFC" & contrast == summaryDt$contrast[1])
       fc <- data.frame(fc, row.names = fc$primerid)
       sub_fc <- data.frame(row.names = fc$primerid, primerid = fc$primerid, coef_diff = abs(con$coef - fc$coef), z = abs(con$z) > abs(fc$z))
-
-      congenes <- row.names(subset(sub_fc, coef_diff > 0.01 & z))
+      congenes <- row.names(subset(sub_fc, coef_diff > 0.1 & z))
       fcHurdleSig[, "orig_logfc"] <- fc[row.names(fcHurdleSig), "coef"]
       fcHurdleSig[, "con_logfc"] <- con[row.names(fcHurdleSig), "coef"]
       fcHurdleSig[congenes, c("coef", "ci.hi", "ci.lo")] <- con[congenes, c("coef", "ci.hi", "ci.lo")]
     }
 
     fcHurdleSig$Log2FC <- fcHurdleSig$coef
+    fcHurdleSig$Log2FC_uncorr<- fcHurdleSig$orig_logfc
     fcHurdle <- data.frame(fcHurdle, row.names = 1)
     fcHurdle$Log2FC <- fcHurdle$coef
     if (include_filt_as_NA) { 
@@ -1241,365 +1298,592 @@ mast_diff <- function(obj = NULL, plot = F, ct = NULL, meta = NULL, FCThresh = l
   return(res)
 }
 
+# get organism stuff for clusterprofiler
+get_organism_items <- function(organisms){
+  if(organisms == 'mouse'){
+    require(org.Mm.eg.db)
+    orgdb = org.Mm.eg.db
+    orgabv = 'mmu'
+    orgname = "Mus musculus"
+  }else if(organisms == 'rat'){
+    require(org.Rn.eg.db)
+    orgdb = org.Rn.eg.db
+    orgabv = 'rno'
+    orgname = "Rattus norvegicus"
+  }
+  else if(organisms == 'celegans'){
+    require(org.Ce.eg.db)
+    orgdb = org.Ce.eg.db
+    orgabv = 'cel'
+    orgname = 'Caenorhabditis elegans'
+  }
+  else if(organisms == 'human'){
+    require(org.Hs.eg.db)
+    orgdb = org.Hs.eg.db
+    orgabv = 'hsa'
+    orgname = 'Homo sapiens'
+  }
+  return(list(orgdb = orgdb, orgkegg = orgabv, orgname = orgname))
+}
 
-
-enrich_CP <- function(ora_genes, organisms, universe = NULL, logFC = NULL, GSE = F, GO_BP_only = F, enrich_all = T) {
+enrich_CP <- function(ora_genes, organisms, n_type = 'ENSEMBL',universe = NULL, classic = T, GO_BP_only = F, enrich_all = T, Msig = NULL, alpha = 0.5, combine = T, simple_combine = F, full_combine = T){
   require(ReactomePA)
   require(clusterProfiler)
   require(org.Sc.sgd.db)
   require(meshes)
   require(dplyr)
-  if (organisms == "mouse") {
-    require(org.Mm.eg.db)
-    orgdb <- org.Mm.eg.db
-    orgabv <- "mmu"
-    orgname <- "Mus musculus"
-    n_type <- "ALIAS"
-  } else if (organisms == "rat") {
-    require(org.Rn.eg.db)
-    orgdb <- org.Rn.eg.db
-    orgabv <- "rno"
-    orgname <- "Rattus norvegicus"
-    n_type <- "ALIAS"
-  } else if (organisms == "celegans") {
-    require(org.Ce.eg.db)
-    orgdb <- org.Ce.eg.db
-    orgabv <- "cel"
-    orgname <- "Caenorhabditis elegans"
-    n_type <- "ENSEMBL"
+  items = get_organism_items(organisms = organisms)
+  orgabv = items$orgkegg
+  orgname = items$orgname
+  orgdb = items$orgdb
+  
+  if(n_type == 'ENSEMBL'){
+    ora_genes <- ENSEMBL2ALIAS[ora_genes]
+    universe <- ENSEMBL2ALIAS[universe]
+    n_type = 'ALIAS'
   }
-
-  # oraL <- unique(bitr(ora_genes, 'ALIAS', 'ENTREZID', orgdb)$ENTREZID)
-  # universe <-  unique(bitr(universe, 'ALIAS', 'ENTREZID', orgdb)$ENTREZID)
-  oraL <- tryCatch(
-    {
-      egdf <- bitr(ora_genes, n_type, "ENTREZID", orgdb) %>%
-        distinct(eval(as.name("ALIAS")), .keep_all = T) %>%
-        data.frame(row.names = 1)
-      egdf$ENTREZID
-    },
-    error = function(cond) {
-      return(NULL)
-    }
-  )
-  universe <- tryCatch(
-    {
-      egdf <- bitr(universe, n_type, "ENTREZID", orgdb) %>%
-        distinct(eval(as.name("ALIAS")), .keep_all = T) %>%
-        data.frame(row.names = 1)
-      egdf$ENTREZID
-    },
-    error = function(cond) {
-      return(NULL)
-    }
-  )
-
-  if (is.null(oraL) || length(oraL) == 0) {
-    return(NULL)
-  }
-
-  if (organisms == "celegans") {
-    oraL_kegg <- paste("CELE_", WORM.GENES[ora_genes, ]$Sequence.Name, sep = "")
-  } else {
+  
+  oraL <- tryCatch({
+    egdf <- bitr(ora_genes, n_type, 'ENTREZID', orgdb) %>% distinct(eval(as.name('ALIAS')), .keep_all = T) %>% data.frame(row.names = 1)
+    egdf$ENTREZID
+  },error=function(cond){return(NULL)})
+  universe <-  tryCatch({
+    egdf <- bitr(universe, n_type, 'ENTREZID', orgdb) %>% distinct(eval(as.name('ALIAS')), .keep_all = T) %>% data.frame(row.names = 1)
+    egdf$ENTREZID
+  },error=function(cond){return(NULL)})
+  
+  if(is.null(oraL) || length(oraL) == 0)
+  {return(NULL)}
+  
+  if(organisms == 'celegans'){
+    oraL_kegg <- paste('CELE_', WORM.GENES[ora_genes,]$Sequence.Name, sep ='')
+  }else{
     oraL_kegg <- oraL
   }
-
+  #return(list(g = oraL, u=universe))
+  
   GSE_results <- list()
   # GO Enrichment
-  if (GO_BP_only | enrich_all) {
-    GSE_results[["GO_BP_ora"]] <- tryCatch(
-      {
-        setReadable(enrichGO(
-          gene = oraL,
-          universe = universe,
-          OrgDb = orgdb,
-          ont = "BP",
-          pAdjustMethod = "BH",
-          pvalueCutoff = 0.1, maxGSSize = 500, minGSSize = 10,
-          qvalueCutoff = 0.05
-        ), OrgDb = orgdb)
-      },
-      error = function(cond) {
-        return(NULL)
-      }
-    )
+  if(GO_BP_only | classic){
+    GSE_results[['GO_BP_ora']] <- tryCatch({setReadable(enrichGO(gene = oraL,
+                                                                 universe      = universe,
+                                                                 OrgDb         = orgdb,
+                                                                 ont           = "BP",
+                                                                 pAdjustMethod = "BH",
+                                                                 pvalueCutoff  = alpha, maxGSSize = 500,minGSSize = 10, 
+                                                                 qvalueCutoff = alpha), OrgDb = orgdb)},error=function(cond){return(NULL)})
   }
-  if (!GO_BP_only) {
-    GSE_results[["WKP_ora"]] <- tryCatch(
-      {
-        setReadable(enrichWP(oraL, organism = orgname, maxGSSize = 500, minGSSize = 10, universe = universe, pvalueCutoff = 0.1, qvalueCutoff = 0.05), OrgDb = orgdb)
-      },
-      error = function(cond) {
-        return(NULL)
-      }
-    )
-
-    GSE_results[["GO_CC_ora"]] <- tryCatch(
-      {
-        setReadable(enrichGO(
-          gene = oraL,
-          universe = universe,
-          OrgDb = orgdb,
-          ont = "CC",
-          pAdjustMethod = "BH",
-          pvalueCutoff = 0.1,
-          qvalueCutoff = 0.05, maxGSSize = 500, minGSSize = 10,
-        ), OrgDb = orgdb)
-      },
-      error = function(cond) {
-        return(NULL)
-      }
-    )
-
-    GSE_results[["GO_MF_ora"]] <- tryCatch(
-      {
-        setReadable(enrichGO(
-          gene = oraL,
-          universe = universe,
-          OrgDb = orgdb,
-          ont = "MF",
-          pAdjustMethod = "BH",
-          pvalueCutoff = 0.1, maxGSSize = 500, minGSSize = 10,
-          qvalueCutoff = 0.05
-        ), OrgDb = orgdb)
-      },
-      error = function(cond) {
-        return(NULL)
-      }
-    )
-
-
-    # KEGG Enrichment
-
-    GSE_results[["KEGG_ora"]] <- tryCatch(
-      {
-        setReadable(enrichKEGG(
-          gene = oraL, universe = universe,
-          organism = orgabv, maxGSSize = 500, minGSSize = 10,
-          pvalueCutoff = 0.1, qvalueCutoff = 0.05
-        ), OrgDb = orgdb, keyType = "ENTREZID")
-      },
-      error = function(cond) {
-        return(NULL)
-      }
-    )
-
-
-    GSE_results[["MKEGG_ora"]] <- tryCatch(
-      {
-        setReadable(enrichMKEGG(
-          gene = oraL, universe = universe, maxGSSize = 500, minGSSize = 10,
-          organism = orgabv, pvalueCutoff = 0.1, qvalueCutoff = 0.05
-        ), OrgDb = orgdb, keyType = "ENTREZID")
-      },
-      error = function(cond) {
-        return(NULL)
-      }
-    )
-
+  if(!GO_BP_only & classic){
+    GSE_results[["WKP_ora"]] <- tryCatch({setReadable(enrichWP(oraL, organism = orgname, maxGSSize = 500, minGSSize = 10, universe = universe, pvalueCutoff  = alpha, qvalueCutoff = alpha ), OrgDb = orgdb)},error=function(cond){return(NULL)})
+    
+    GSE_results[['GO_CC_ora']] <- tryCatch({setReadable(enrichGO(gene = oraL,
+                                                                 universe      = universe,
+                                                                 OrgDb         = orgdb,
+                                                                 ont           = "CC",
+                                                                 pAdjustMethod = "BH",
+                                                                 pvalueCutoff  = alpha,
+                                                                 qvalueCutoff = alpha,maxGSSize = 500,minGSSize = 10, 
+    ), OrgDb = orgdb)},error=function(cond){return(NULL)})
+    
+    GSE_results[['GO_MF_ora']] <- tryCatch({setReadable(enrichGO(gene = oraL,
+                                                                 universe      = universe,
+                                                                 OrgDb         = orgdb,
+                                                                 ont           = "MF",
+                                                                 pAdjustMethod = "BH",
+                                                                 pvalueCutoff  = alpha, maxGSSize = 500,minGSSize = 10, 
+                                                                 qvalueCutoff = alpha), OrgDb = orgdb)},error=function(cond){return(NULL)})
+    
+    
+    #KEGG Enrichment
+    
+    GSE_results[['KEGG_ora']] <- tryCatch({setReadable(enrichKEGG(gene = oraL, universe = universe,
+                                                                  organism     = orgabv, maxGSSize = 500,minGSSize = 10, 
+                                                                  pvalueCutoff  = alpha,qvalueCutoff = alpha), OrgDb = orgdb, keyType = 'ENTREZID')},error=function(cond){return(NULL)})
+    
+    
+    GSE_results[['MKEGG_ora']] <- tryCatch({setReadable(enrichMKEGG(gene = oraL, universe = universe, maxGSSize = 500,minGSSize = 10, 
+                                                                    organism = orgabv, pvalueCutoff  = alpha,qvalueCutoff = alpha), OrgDb = orgdb, keyType = 'ENTREZID')},error=function(cond){return(NULL)})
+    
     # Reactome Enrichment
-    GSE_results[["REACT_ora"]] <- tryCatch(
-      {
-        setReadable(enrichPathway(gene = oraL, organism = organisms, maxGSSize = 500, minGSSize = 10, universe = universe, pvalueCutoff = 0.1, qvalueCutoff = 0.05), OrgDb = orgdb, keyType = "ENTREZID")
-      },
-      error = function(cond) {
-        return(NULL)
+    GSE_results[['REACT_ora']] <- tryCatch({setReadable(enrichPathway(gene=oraL,organism = organisms, maxGSSize = 500,minGSSize = 10,  universe = universe, pvalueCutoff  = alpha,qvalueCutoff = alpha), OrgDb = orgdb, keyType = 'ENTREZID')},error=function(cond){return(NULL)})
+  }
+  
+  Msig_res <- NULL
+  if(!is.null(Msig)){
+    Msig_res <- lapply(Msig, function(x){
+      cat = strsplit(x, '-')[[1]][1]
+      sub_cat = ''
+      if(length(strsplit(x, '-')[[1]]) > 1){
+        sub_cat = strsplit(x, '-')[[1]][2]
       }
-    )
+      df = get_msig(organisms, cat = cat, sub_cat = sub_cat, gmt_dir = './dataset/Msigdb/') 
+      tryCatch({setReadable(enricher(oraL, TERM2GENE=df, maxGSSize = 500,minGSSize = 10,  universe = universe, pvalueCutoff = alpha, qvalueCutoff = alpha), OrgDb = orgdb, keyType = 'ENTREZID')},error=function(cond){return(NULL)})
+    })
   }
-
-  # Mesh Enrichment
-  # GSE_results[['MESH_ora']] <- setReadable0(enrichMeSH(oraL, MeSHDb = "MeSH.Sce.S288c.eg.db", database="gene2pubmed", category = 'G'), gene2symbol = entrez2symbol, keyType = 'ENTREZ')
-
-
-  gse_list0 <- NULL
-  gse_list <- NULL
-  if (!is.null(logFC)) {
-    gse_list <- logFC
-    gse_list0 <- logFC
-    gse_list <- sort(gse_list, T)
-    gse_list0 <- sort(gse_list0, T)
-    egdf <- bitr(names(gse_list), "ALIAS", "ENTREZID", orgdb) %>%
-      distinct(eval(as.name("ALIAS")), .keep_all = T) %>%
-      data.frame(row.names = 1)
-    gse_list <- gse_list[intersect(names(gse_list), row.names(egdf))]
-    names(gse_list) <- egdf[names(gse_list), ]$ENTREZID
+  
+  if(!is.null(Msig_res)){
+    names(Msig_res) <- Msig
+    for(n in names(Msig_res)){
+      GSE_results[[n]] <- Msig_res[[n]]
+    }
   }
-  GSE_results[["gfc0"]] <- gse_list0
-  GSE_results[["gfc"]] <- gse_list
+  if(combine){
+    if(simple_combine == T & classic){
+      combined <- GSE_results[['GO_BP_ora']]
+      res_ <- c(c("WKP_ora", 'GO_BP_ora','KEGG_ora','MKEGG_ora','REACT_ora'), Msig)
+      combined@result <- do.call(rbind, lapply(res_, FUN = function(x){
+        r=GSE_results[[x]]@result
+        if(ncol(r) == 11){
+          r <- r[,3:11]
+        }
+        r
+      }))
+      row.names(combined@result) <- combined@result$ID
+      combined@geneSets <- do.call(c, lapply(res_, FUN = function(x){GSE_results[[x]]@geneSets}))
+      names(combined@geneSets) <- do.call(c, lapply(res_, FUN = function(x){names(GSE_results[[x]]@geneSets)}))
+      combined@result$old_qvalue <- combined@result$qvalue
+      combined@result$qvalue <- qvalue(combined@result$pvalue)$qvalue
+      GSE_results[['combined']] <- combined
+    }
+    if(full_combine == T){
+      all_sets <- NULL
+      all_sets_n <- NULL
+      if(classic){
+        wiki <- data.frame(clusterProfiler:::get_wp_data(orgname))
+        wiki_t2g <- wiki[, c('wpid', 'gene')]
+        colnames(wiki_t2g) <- c('term', 'gene')
+        wiki_t2n <- unique(wiki[, c('wpid', 'name')])
+        colnames(wiki_t2n) <- c('term', 'name')
+        row.names(wiki_t2n) <- wiki_t2n$wpid
+        react <- as.list(ReactomePA:::get_Reactome_DATA(organisms))
+        go_bp <- as.list(clusterProfiler:::get_GO_data(orgdb, 'BP', "ENTREZID"))
+        kegg <- as.list(clusterProfiler:::prepare_KEGG(orgabv, "KEGG", "ncbi-geneid"))
+        go_kegg_react_list <- c(react$PATHID2EXTID, go_bp$PATHID2EXTID, kegg$PATHID2EXTID)
+        go_kegg_react_names <- c(react$PATHID2NAME, go_bp$PATHID2NAME, kegg$PATHID2NAME)
+        go_kegg_react_P2G <- data.frame(do.call(rbind, lapply(names(go_kegg_react_list), FUN = function(x){
+          cbind(rep(x, length(go_kegg_react_list[[x]])), go_kegg_react_list[[x]])
+        })))
+        colnames(go_kegg_react_P2G) <- c('term', 'gene')
+        
+        go_kegg_react_P2N <- data.frame(term = names(go_kegg_react_names), name = go_kegg_react_names)
+        
+        all_sets <- rbind(go_kegg_react_P2G, wiki_t2g)
+        all_sets_n <- rbind(go_kegg_react_P2N, wiki_t2n)
+      }
+      
+      Msig_df <- NULL
+      if(!is.null(Msig)){
+        Msig_df <- do.call(rbind, lapply(Msig, function(x){
+          cat = strsplit(x, '-')[[1]][1]
+          sub_cat = ''
+          if(length(strsplit(x, '-')[[1]]) > 1){
+            sub_cat = strsplit(x, '-')[[1]][2]
+          }
+          df = get_msig(organisms, cat = cat, sub_cat = sub_cat, gmt_dir = './dataset/Msigdb/') 
+          colnames(df) <- c('term', 'gene')
+          df
+        }))
+        Msig_df <- data.frame(Msig_df)
+        View(Msig_df)
+        colnames(Msig_df) <- c('term', 'gene')
+        all_sets <- rbind(all_sets, Msig_df)
+        all_sets_n <- rbind(all_sets_n, data.frame(term=unique(Msig_df[,1]), name=unique(Msig_df[,1])))
+      }
+      if(!is.null(all_sets)){
+        GSE_results[['combined_full']] <- tryCatch({setReadable(enricher(oraL, TERM2GENE = all_sets,
+                                                                         TERM2NAME = all_sets_n, 
+                                                                         maxGSSize = 500,minGSSize = 10,  
+                                                                         universe = universe, pvalueCutoff = alpha, 
+                                                                         qvalueCutoff = alpha), OrgDb = orgdb, keyType = 'ENTREZID')},error=function(cond){return(NULL)})}
+    }
+  }
+  
   return(GSE_results)
 }
 
 
 
-gse_CP <- function(ora_genes, organisms, logFC = NULL, GSE = F, simplify_go = T, combine = T, simple_combine = T) {
+
+gse_CP <- function( organisms, logFC=NULL, n_type = 'ENSEMBL', classic = T, simplify_go = T, combine = T, simple_combine = F, full_combine = T, Msig = NULL, alpha = 1, disease= F){
   require(ReactomePA)
   require(clusterProfiler)
   require(org.Sc.sgd.db)
   require(meshes)
-  if (organisms == "mouse") {
-    require(org.Mm.eg.db)
-    orgdb <- org.Mm.eg.db
-
-    orgabv <- "mmu"
-    orgname <- "Mus musculus"
-    n_type <- "ALIAS"
-  } else if (organisms == "rat") {
-    require(org.Rn.eg.db)
-    orgdb <- org.Rn.eg.db
-    orgabv <- "rno"
-    orgname <- "Rattus norvegicus"
-    n_type <- "ALIAS"
-  } else if (organisms == "celegans") {
-    require(org.Ce.eg.db)
-    orgdb <- org.Ce.eg.db
-    orgabv <- "cel"
-    orgname <- "Caenorhabditis elegans"
-    n_type <- "ENSEMBL"
-  }
   require(dplyr)
-
+  if(simple_combine){
+    alpha = 1
+  }
+  if(!classic){
+    simple_combine = F
+  }
+  
+  items = get_organism_items(organisms = organisms)
+  orgabv = items$orgkegg
+  orgname = items$orgname
+  orgdb = items$orgdb
   GSE_results <- list()
   gse_list0 <- NULL
   gse_list <- NULL
-  if (!is.null(logFC)) {
+  if(!is.null(logFC)){ 
     gse_list <- logFC
-    print(length(gse_list))
-    gse_list0 <- logFC
+    if(n_type == 'ENSEMBL'){
+      gse_list <- tapply(gse_list, ENSEMBL2ALIAS[names(gse_list)], FUN = function(x){
+        x[which(abs(x) == max(abs(x)))]
+      })
+      n_type ='ALIAS'
+      gnames <- names(gse_list)
+      gse_list <- as.vector(gse_list)
+      names(gse_list) <- gnames
+    }
     gse_list <- sort(gse_list, T)
     gse_list0 <- sort(gse_list0, T)
-    egdf <- bitr(names(gse_list), n_type, "ENTREZID", orgdb) %>%
-      distinct(eval(as.name("ALIAS")), .keep_all = T) %>%
-      data.frame(row.names = 1)
+    egdf <- bitr(names(gse_list), n_type, 'ENTREZID', orgdb) %>% distinct(eval(as.name('ALIAS')), .keep_all = T) %>% data.frame(row.names = 1)
     gse_list <- gse_list[intersect(names(gse_list), row.names(egdf))]
-    names(gse_list) <- egdf[names(gse_list), ]$ENTREZID
-    # names(gse_list) <- sapply(names(gse_list), function(x){ifelse(x %in% genes_table$Gene.symbol, unique(row.names(genes_table[genes_table$Gene.symbol == x,])), x)})
-    # names(gse_list0) <-  paste('CELE_', WORM.GENES[names(gse_list0),]$Sequence.Name, sep ='')
-
-    if (GSE) {
-      print(length(gse_list))
-      GSE_results[["WKP_gse"]] <- setReadable(gseWP(gse_list, eps = 0, organism = orgname, minGSSize = 10, nPermSimple = 100000, maxGSSize = 250, pvalueCutoff = 0.5), OrgDb = orgdb, keyType = "ENTREZID")
-      # GSE_results[["BIO_gse"]] <- setReadable0(GSEA(gse_list, TERM2GENE = BIOCYC[,c(1,2)], TERM2NAME = BIOCYC[,c(1,3)], nPerm = 1000, minGSSize = 5, maxGSSize = 500), gene2symbol = entrez2symbol, keyType = 'ENTREZ')
-      GSE_results[["GO_BP_gse"]] <- setReadable(gseGO(
-        geneList = gse_list,
-        OrgDb = orgdb,
-        keyType = "ENTREZID", nPermSimple = 100000,
-        ont = "BP", eps = 0,
-        minGSSize = 10,
-        maxGSSize = 250,
-        pvalueCutoff = 0.5,
-        verbose = FALSE, by = "fgsea"
-      ), OrgDb = orgdb, keyType = "ENTREZID")
-
-      GSE_results[["GO_CC_gse"]] <- setReadable(gseGO(
-        geneList = gse_list,
-        OrgDb = orgdb,
-        keyType = "ENTREZID",
-        ont = "CC", nPermSimple = 100000,
-        minGSSize = 10, eps = 0,
-        maxGSSize = 250,
-        pvalueCutoff = 0.5,
-        verbose = FALSE
-      ), OrgDb = orgdb, keyType = "ENTREZID")
-
-      GSE_results[["GO_MF_gse"]] <- setReadable(gseGO(
-        geneList = gse_list,
-        OrgDb = orgdb, keyType = "ENTREZID",
-        ont = "MF",
-        minGSSize = 10, eps = 0,
-        maxGSSize = 250, nPermSimple = 100000,
-        pvalueCutoff = 0.5,
-        verbose = FALSE
-      ), OrgDb = orgdb, keyType = "ENTREZID")
-      GSE_results[["KEGG_gse"]] <- setReadable(gseKEGG(
-        geneList = gse_list,
-        organism = orgabv,
-        minGSSize = 10, eps = 0,
-        maxGSSize = 250, nPermSimple = 100000,
-        pvalueCutoff = 0.5,
-        verbose = FALSE, keyType = "ncbi-geneid"
-      ), OrgDb = orgdb, keyType = "ENTREZID")
-      GSE_results[["MKEGG_gse"]] <- setReadable(gseMKEGG(gene = gse_list, minGSSize = 10, eps = 0, nPermSimple = 100000, maxGSSize = 250, organism = orgabv, pvalueCutoff = 0.5), OrgDb = orgdb, keyType = "ENTREZID")
-      GSE_results[["REACT_gse"]] <- setReadable(gsePathway(
-        geneList = gse_list, organism = organisms, nPermSimple = 100000, minGSSize = 10, maxGSSize = 250,
-        pvalueCutoff = 0.5, eps = 0,
-        pAdjustMethod = "BH", verbose = FALSE
-      ), OrgDb = orgdb, keyType = "ENTREZID")
-      # GSE_results[['MESH_gse']] <- setReadable0(gseMeSH(gse_list, MeSHDb = "MeSH.Sce.S288c.eg.db", database = "gene2pubmed", category = "G", nPerm = 1000, minGSSize = 5, maxGSSize = 500), gene2symbol = entrez2symbol, keyType = 'ENTREZ')
+    names(gse_list) <- egdf[names(gse_list),]$ENTREZID
+    #return(gse_list)
+    if(classic){
+      GSE_results[["WKP_gse"]] <- setReadable(gseWP(gse_list, eps = 0, organism = orgname, minGSSize = 10, nPermSimple = 100000, maxGSSize = 500, pvalueCutoff=alpha), OrgDb = orgdb, keyType = 'ENTREZID')
+      #GSE_results[["BIO_gse"]] <- setReadable0(GSEA(gse_list, TERM2GENE = BIOCYC[,c(1,2)], TERM2NAME = BIOCYC[,c(1,3)], nPerm = 1000, minGSSize = 5, maxGSSize = 500), gene2symbol = entrez2symbol, keyType = 'ENTREZ')
+      GSE_results[['GO_BP_gse']] <- setReadable(gseGO(geneList = gse_list,
+                                                      OrgDb        = orgdb, 
+                                                      keyType = "ENTREZID", nPermSimple = 10000,
+                                                      ont          = "BP",eps = 0,
+                                                      minGSSize    = 10,
+                                                      maxGSSize    = 500,
+                                                      pvalueCutoff = alpha,
+                                                      verbose      = FALSE, by = 'fgsea'), OrgDb = orgdb, keyType = 'ENTREZID')
+      
+      GSE_results[['GO_CC_gse']] <- setReadable(gseGO(geneList = gse_list,
+                                                      OrgDb        = orgdb,
+                                                      keyType = "ENTREZID",
+                                                      ont          = "CC",nPermSimple = 10000,
+                                                      minGSSize    = 10,eps = 0,
+                                                      maxGSSize    = 500,
+                                                      pvalueCutoff = alpha,
+                                                      verbose      = FALSE), OrgDb = orgdb, keyType = 'ENTREZID')
+      
+      GSE_results[['GO_MF_gse']] <- setReadable(gseGO(geneList     = gse_list,
+                                                      OrgDb        = orgdb,keyType = "ENTREZID",
+                                                      ont          = "MF",
+                                                      minGSSize    = 10,eps = 0,
+                                                      maxGSSize    = 500,nPermSimple = 10000,
+                                                      pvalueCutoff = alpha,
+                                                      verbose      = FALSE), OrgDb = orgdb, keyType = 'ENTREZID')
+      GSE_results[['KEGG_gse']]<- setReadable(gseKEGG(geneList = gse_list, 
+                                                      organism     = orgabv,
+                                                      minGSSize = 10, eps = 0,
+                                                      maxGSSize = 500,nPermSimple = 10000,
+                                                      pvalueCutoff = alpha,
+                                                      verbose      = FALSE, keyType = 'ncbi-geneid'),  OrgDb = orgdb, keyType = 'ENTREZID')
+      GSE_results[['MKEGG_gse']] <- setReadable(gseMKEGG(gene = gse_list,  minGSSize = 10, eps = 0, nPermSimple = 10000, maxGSSize = 500, organism = orgabv, pvalueCutoff=alpha),  OrgDb = orgdb, keyType = 'ENTREZID')
+      GSE_results[['REACT_gse']] <- setReadable(gsePathway(geneList =  gse_list, organism = organisms, nPermSimple = 10000, minGSSize = 10, maxGSSize = 500, 
+                                                           pvalueCutoff=alpha,eps = 0,
+                                                           pAdjustMethod="BH", verbose=FALSE), OrgDb = orgdb, keyType = 'ENTREZID')
     }
-    for (r in names(GSE_results)) {
-      GSE_results[[r]]@result <- subset(GSE_results[[r]]@result, qvalue < 0.05)
-    }
-    if (combine) {
-      if (simple_combine == T) {
-        combined <- GSE_results[["GO_BP_gse"]]
-        res_ <- c("WKP_gse", "GO_BP_gse", "KEGG_gse", "MKEGG_gse", "REACT_gse", "GO_CC_gse", "GO_MF_gse")
-        combined@result <- do.call(rbind, lapply(res_, FUN = function(x) {
-          GSE_results[[x]]@result
-        }))
-        row.names(combined@result) <- combined@result$ID
-        combined@geneSets <- do.call(c, lapply(res_, FUN = function(x) {
-          GSE_results[[x]]@geneSets
-        }))
-        names(combined@geneSets) <- do.call(c, lapply(res_, FUN = function(x) {
-          names(GSE_results[[x]]@geneSets)
-        }))
-
-        GSE_results[["combined"]] <- combined
-        GSE_results[["combined_up"]] <- combined
-        GSE_results[["combined_up"]]@result <- subset(GSE_results[["combined_up"]]@result, NES > 0)
-        GSE_results[["combined_down"]] <- combined
-        GSE_results[["combined_down"]]@result <- subset(GSE_results[["combined_down"]]@result, NES < 0)
-      } else {
-        react <- as.list(ReactomePA:::get_Reactome_DATA(organisms))
-        # print(length(react$PATHID2EXTID))
-        go_bp <- as.list(clusterProfiler:::get_GO_data(orgdb, "BP", "ENTREZID"))
-        # print(length(go_bp$PATHID2EXTID))
-        # print(length(react$PATHID2EXTID))
-        kegg <- as.list(clusterProfiler:::prepare_KEGG(orgabv, "KEGG", "ncbi-geneid"))
-        # print(length(kegg$PATHID2EXTID))
-        # print(length(go_bp$PATHID2EXTID))
-        # print(length(react$PATHID2EXTID))
-        go_kegg_react_list <- c(react$PATHID2EXTID, go_bp$PATHID2EXTID, kegg$PATHID2EXTID)
-        # print(length(go_kegg_react_list))
-        go_kegg_react_names <- c(react$PATHID2NAME, go_bp$PATHID2NAME, kegg$PATHID2NAME)
-        # print(print(length(go_kegg_react_names)))
-        go_kegg_react_P2G <- data.frame(do.call(rbind, lapply(names(go_kegg_react_list), FUN = function(x) {
-          cbind(rep(x, length(go_kegg_react_list[[x]])), go_kegg_react_list[[x]])
-        })))
-        # print(dim(go_kegg_react_P2G))
-        colnames(go_kegg_react_P2G) <- c("term", "gene")
-        print(length(unique(go_kegg_react_P2G$term)))
-        go_kegg_react_P2N <- data.frame(term = names(go_kegg_react_names), name = go_kegg_react_names)
-        View(go_kegg_react_P2N)
-        GSE_results[["combined"]] <- setReadable(GSEA(
+    Msig_res <- NULL
+    if(!is.null(Msig)){
+      Msig_res <- lapply(Msig, function(x){
+        cat = strsplit(x, '-')[[1]][1]
+        sub_cat = ''
+        if(length(strsplit(x, '-')[[1]]) > 1){
+          sub_cat = strsplit(x, '-')[[1]][2]
+        }
+        df = get_msig(organisms, cat = cat, sub_cat = sub_cat, gmt_dir = './dataset/Msigdb/') 
+        tryCatch({setReadable(GSEA(
           gse_list,
           exponent = 1,
           minGSSize = 10,
-          maxGSSize = 250,
-          eps = 0, nPermSimple = 100000,
-          pvalueCutoff = 0.5,
+          maxGSSize = 500,
+          eps = 0,nPermSimple = 10000,
+          pvalueCutoff = alpha,
+          pAdjustMethod = "BH",
+          TERM2GENE = df,
+          verbose = TRUE,
+          seed = FALSE,
+          by = "fgsea"), OrgDb = orgdb, keyType = 'ENTREZID')},error=function(cond){return(NULL)})
+      })
+    }
+    
+    if(!is.null(Msig_res)){
+      names(Msig_res) <- Msig
+      for(n in names(Msig_res)){
+        GSE_results[[n]] <- Msig_res[[n]]
+      }
+    }
+    #for(r in names(GSE_results)){
+    #GSE_results[[r]]@result <- subset(GSE_results[[r]]@result, qvalue < 0.05)
+    #}
+    if(combine){
+      if(simple_combine == T){
+        combined <- GSE_results[['GO_BP_gse']]
+        res_ <- c(c("WKP_gse", 'GO_BP_gse','KEGG_gse','REACT_gse'), Msig)
+        combined@result <- do.call(rbind, lapply(res_, FUN = function(x){GSE_results[[x]]@result}))
+        row.names(combined@result) <- combined@result$ID
+        combined@geneSets <- do.call(c, lapply(res_, FUN = function(x){GSE_results[[x]]@geneSets}))
+        names(combined@geneSets) <- do.call(c, lapply(res_, FUN = function(x){names(GSE_results[[x]]@geneSets)}))
+        combined@result$old_qvalue <- combined@result$qvalue
+        combined@result$qvalue <- qvalue(combined@result$pvalue)$qvalue
+        GSE_results[['combined']] <- combined
+        GSE_results[['combined_up']] <- combined
+        GSE_results[['combined_up']]@result <- subset(GSE_results[['combined_up']]@result, NES > 0)
+        GSE_results[['combined_down']] <- combined
+        GSE_results[['combined_down']]@result <- subset(GSE_results[['combined_down']]@result, NES < 0)
+      }
+      if(full_combine == T){
+        all_sets <- NULL
+        all_sets_n <- NULL
+        if(classic){
+          wiki <- data.frame(clusterProfiler:::get_wp_data(orgname))
+          wiki_t2g <- wiki[, c('wpid', 'gene')]
+          colnames(wiki_t2g) <- c('term', 'gene')
+          wiki_t2n <- unique(wiki[, c('wpid', 'name')])
+          colnames(wiki_t2n) <- c('term', 'name')
+          row.names(wiki_t2n) <- wiki_t2n$wpid
+          react <- as.list(ReactomePA:::get_Reactome_DATA(organisms))
+          go_bp <- as.list(clusterProfiler:::get_GO_data(orgdb, 'BP', "ENTREZID"))
+          kegg <- as.list(clusterProfiler:::prepare_KEGG(orgabv, "KEGG", "ncbi-geneid"))
+          go_kegg_react_list <- c(react$PATHID2EXTID, go_bp$PATHID2EXTID, kegg$PATHID2EXTID)
+          go_kegg_react_names <- c(react$PATHID2NAME, go_bp$PATHID2NAME, kegg$PATHID2NAME)
+          go_kegg_react_P2G <- data.frame(do.call(rbind, lapply(names(go_kegg_react_list), FUN = function(x){
+            cbind(rep(x, length(go_kegg_react_list[[x]])), go_kegg_react_list[[x]])
+          })))
+          colnames(go_kegg_react_P2G) <- c('term', 'gene')
+          
+          go_kegg_react_P2N <- data.frame(term = names(go_kegg_react_names), name = go_kegg_react_names)
+          
+          all_sets <- rbind(go_kegg_react_P2G, wiki_t2g)
+          all_sets_n <- rbind(go_kegg_react_P2N, wiki_t2n)
+        }
+        Msig_df <- NULL
+        if(!is.null(Msig)){
+          Msig_df <- do.call(rbind, lapply(Msig, function(x){
+            cat = strsplit(x, '-')[[1]][1]
+            sub_cat = ''
+            if(length(strsplit(x, '-')[[1]]) > 1){
+              sub_cat = strsplit(x, '-')[[1]][2]
+            }
+            df = get_msig(organisms, cat = cat, sub_cat = sub_cat, gmt_dir = './dataset/Msigdb/') 
+            colnames(df) <- c('term', 'gene')
+            df
+          }))
+          Msig_df <- data.frame(Msig_df)
+          colnames(Msig_df) <- c('term', 'gene')
+          all_sets <- rbind(all_sets, Msig_df)
+          all_sets_n <- rbind(all_sets_n, data.frame(term=unique(Msig_df[,1]), name=unique(Msig_df[,1])))
+        }
+        GSE_results[['combined_full']] <- setReadable(GSEA(
+          gse_list,
+          exponent = 1,
+          minGSSize = 10,
+          maxGSSize = 500,
+          eps = 0,nPermSimple = 10000,
+          pvalueCutoff = alpha,
           pAdjustMethod = "BH",
           gson = NULL,
-          TERM2GENE = go_kegg_react_P2G,
-          TERM2NAME = go_kegg_react_P2N,
+          TERM2GENE = all_sets,
+          TERM2NAME = all_sets_n,
           verbose = TRUE,
           seed = FALSE,
           by = "fgsea",
-        ), OrgDb = orgdb, keyType = "ENTREZID")
+        ), OrgDb = orgdb, keyType = 'ENTREZID')
       }
     }
+    
   }
-
-
-
-  GSE_results[["gfc0"]] <- gse_list0
-  GSE_results[["gfc"]] <- gse_list
-
+  
+  
+  
+  GSE_results[['gfc0']] <- gse_list0
+  GSE_results[['gfc']] <- gse_list
+  
   return(GSE_results)
 }
 
-deg_utr2 <- function(file, ct, compare, meta, impute = F, method = "fisher.test", filter_by_PAS_motif = TRUE, alpha = 0.05, combine_p = NULL, diff_thresh = 0.05, fasta_file = "../mouse_rat_proposal//dataset/igv/mouse/mouse_spike.fa") {
+deg_utr <- function(file, ct, compare, meta, impute = F, method = 'fisher.test', combine_p = 'fisher'){
+  ##read in the new dapars file that includes long. short and PDUI values
+  dapars <- read.csv(file, sep = '\t', header = T, row.names = 1)
+  dapars_orig <- dapars
+  dapars$strand = sapply(strsplit(row.names(dapars), '\\|'), FUN = function(x){x[4]})
+  dapars$APA_dist = 0
+  dapars[dapars$strand == '+',]$APA_dist <- abs(sapply(strsplit(dapars[dapars$strand == '+',]$Loci, '-'), 
+                                                   FUN = function(x){as.numeric(strsplit(x[1], ':')[[1]][2])}) - dapars[dapars$strand == '+',]$Predicted_Proximal_APA)-1
+  dapars[dapars$strand == '-',]$APA_dist <- abs(sapply(strsplit(dapars[dapars$strand == '-',]$Loci, '-'), 
+                                                   FUN = function(x){as.numeric(x[2])}) - dapars[dapars$strand == '-',]$Predicted_Proximal_APA)-1
+  
+  ## Filter first based on coverage of the each gene's entire body
+  ## Only account for UTR coverage in genes that are assigned at least 10 uniquely mapped reads
+  
+  genes <- row.names(ct)[rowSums(ct[,row.names(subset(meta, cellType == compare[1]))] > 10) > 5]
+  genes <- intersect(genes, row.names(ct)[rowSums(ct[,row.names(subset(meta, cellType == compare[2]))] > 10) > 5])
+  dapars$gene_short_names <- sapply(row.names(dapars), FUN = function(x){strsplit(x,"\\|")[[1]][2]})
+  print(length(unique((dapars$gene_short_names))))
+  
+  
+  all_genes <- unique(dapars$gene_short_names)
+  dapars <- dapars[dapars$gene_short_names %in% genes,]
+  #dapars <- subset(dapars, fit_value >= 2) # Maybe filter also based on regression fit value
+  print(length(unique((dapars$gene_short_names))))
+  # vector to store gene name and UTR region correspondence in case gene names is lost with imputation
+  gene2region <- dapars$gene_short_names
+  names(gene2region) <- sapply(row.names(dapars), FUN = function(x){strsplit(x,"\\|")[[1]][1]})
+  
+  #split file into long, short and pdui
+  d_long <- dapars[,grepl('long_exp', colnames(dapars))]
+  d_short <- dapars[,grepl('short_exp', colnames(dapars))]
+  d_pdui <- dapars[,grepl('PDUI', colnames(dapars))]
+  
+  # change column names
+  colnames(d_long) <- sapply(strsplit(colnames(d_long), '_'), FUN = function(x){strsplit(x[1], "\\.")[[1]][1]})
+  colnames(d_short) <- sapply(strsplit(colnames(d_short), '_'), FUN = function(x){strsplit(x[1], "\\.")[[1]][1]})
+  colnames(d_pdui) <- sapply(strsplit(colnames(d_pdui), '_'), FUN = function(x){strsplit(x[1], "\\.")[[1]][1]})
+  
+  # select filtering genes based on number of passes (Non NAs) and overall coverage (average > 2 either in long or short UTR in both conditions)
+  grp <- meta[colnames(d_pdui), "cellType"]
+  btch <- meta[colnames(d_pdui), "experiment"]
+  cond1_ind <- which(grp == compare[1])
+  cond2_ind <- which(grp == compare[2])
+  
+  #print(d_pdui[dapars$gene_short_name == 'Cdk1',])
+  ## NA FILTER
+  # First filter out all genes that have at least 5 non-NAs in terms of coverage in both conditions
+  na.filt.genes <- rowSums(!is.na(d_pdui[,cond1_ind])) >= 5 & rowSums(!is.na(d_pdui[,cond2_ind])) >= 5
+  dapars <- dapars[na.filt.genes, ]
+  
+  print(length(unique((dapars$gene_short_names))))
+  
+  d_long <- d_long[na.filt.genes, ]
+  d_short <- d_short[na.filt.genes, ]
+  d_pdui <- d_pdui[na.filt.genes, ]
+  # Filter based on coverage of UTR regions
+  c1.filt.genes <- rowMeans(d_long[, cond1_ind], na.rm = T) > 1 | rowMeans(d_short[, cond1_ind], na.rm = T) > 1
+  c2.filt.genes <- rowMeans(d_long[, cond2_ind], na.rm = T) > 1 | rowMeans(d_short[, cond2_ind], na.rm = T) > 1
+  
+  #print(sum(c2.filt.genes))
+  final.filt.genes <- c1.filt.genes & c2.filt.genes 
+  #print(sum(final.filt.genes))
+  # filtering matrices with genes selected prior
+  dapars <- dapars[final.filt.genes, ]
+  d_long <- d_long[final.filt.genes, ]
+  d_short <- d_short[final.filt.genes, ]
+  d_pdui <- d_pdui[final.filt.genes, ]
+  print(length(unique((dapars$gene_short_names))))
+  #print('Cdk1' %in% dapars$gene_short_name)
+  if(impute){
+    dapars_out <- data.frame(Gene = row.names(dapars), dapars[1:3,], d_pdui)
+    write.table(dapars_out, file = './temp.dp.tsv', sep = '\t', quote = F, row.names = F)
+    d_pdui = scDaPars(raw_PDUI_file = './temp.dp.tsv',
+                      out_dir = "apa/scDaPars_result",
+                      filter_gene_thre = 0.2,
+                      filter_cell_thre = 0.1, k= 8)
+    method = 'ks.test'
+  }
+  #dapars_ratio <- dapars_ratio[rowSums(!is.na(dapars_ratio)) > 20 ,]
+  
+  #dapars_ratio[is.na(dapars_ratio)] <- 0
+  
+  #print(sum(rowSums(!is.na(dapars_ratio[,cond1_ind])) >= 10 & rowSums(!is.na(dapars_ratio[,cond2_ind])) >=10))
+  #print(sum(rowSums(!is.na(dapars_ratio)) > 20))
+  #dapars_ratio <- dapars_ratio[rowSums(!is.na(dapars_ratio[,cond1_ind])) >= 7 & rowSums(!is.na(dapars_ratio[,cond2_ind])) >=7,]
+  if(method == 'ks.test'){
+    test <- apply(d_pdui, 1, FUN = function(x){
+      if(sum(x[!is.na(x)]) == 0 | sum(!is.na(x[cond1_ind])) <= 3 | sum(!is.na(x[cond2_ind])) <= 3){
+        c(1, 0)
+      }else{
+        c(ks.test(x[cond1_ind][!is.na(x[cond1_ind])], x[cond2_ind][!is.na(x[cond2_ind])])$p.value, mean(x[cond2_ind][!is.na(x[cond2_ind])]) - mean(x[cond1_ind][!is.na(x[cond1_ind])]))
+      }
+    })
+    test <- t(test)
+  }else{
+    
+    l1 <- length(cond1_ind)
+    l2 <- length(cond2_ind)
+    d_long1 <- d_long
+    #d_long1[is.na(d_long1)] <- 0
+    d_short1 <- d_short
+    #d_short1[is.na(d_short1)] <- 0
+    utrl1_mean <- round(rowMeans(d_long1[, cond1_ind], na.rm = T))
+    utrl2_mean <- round(rowMeans(d_long1[, cond2_ind], na.rm = T))
+    utrs1_mean <- round(rowMeans(d_short1[, cond1_ind], na.rm = T))
+    utrs2_mean <- round(rowMeans(d_short1[, cond2_ind], na.rm = T))
+    pdui1_mean <- rowMeans(d_pdui[, cond1_ind], na.rm = T)
+    pdui2_mean <- rowMeans(d_pdui[, cond2_ind], na.rm = T)
+    test <- do.call(rbind, pblapply(row.names(d_long), FUN = function(x) {
+      # utr_l1 <- d_long[x,cond1_ind][!is.na(d_long[x,cond1_ind])] # long utr coverage in condition 1
+      # utr_l2 <- d_long[x,cond2_ind][!is.na(d_long[x,cond2_ind])] # short utr coverage in condition 2
+      # utr_s1 <- d_short[x,cond1_ind][!is.na(d_short[x,cond1_ind])] # long utr coverage in condition 1
+      # utr_s2 <- d_short[x,cond2_ind][!is.na(d_short[x,cond2_ind])] # short utr coverage in condition 2
+      pdui_1 <- pdui1_mean[x]#mean(d_pdui[x, cond1_ind], na.rm = T)
+      pdui_2 <- pdui2_mean[x]#mean(d_pdui[x, cond2_ind], na.rm = T)
+      # c(fisher.test(x = rbind(c(mean(utr_l1), mean(utr_s1)), c(mean(utr_l2), mean(utr_s2))))$p.value, pdui_2 - pdui_1)
+      twobytwo <- rbind(c(utrl1_mean[x], utrs1_mean[x]), c(utrl2_mean[x], utrs2_mean[x]))
+      c(fisher.test(x = twobytwo)$p.value, pdui_2 - pdui_1)
+      
+      
+      # if(x == 'XM_039113041.1|Pou2f2|NC_051336.1|-'){
+      # print(rbind(c(sum(utr_l1)/l1, sum(utr_s1)/l1), c(sum(utr_l2)/l1, sum(utr_s2)/l2)))
+      # }
+    }))
+    cat('done')
+  }
+  #print(dim(test))
+  #print(dim(d_long))
+  row.names(test) <- row.names(d_long)
+  colnames(test) <- c('pval', 'mean.diff')
+  test <- data.frame(test)
+  test$pval[test$pval > 1] = 1
+  test$padj <- p.adjust(test$pval)
+  test$fdr <- qvalue(test$pval)$qvalue
+  
+  if(impute){
+    test$gene_short_names <- gene2region[row.names(test)]
+  }else{
+    test$gene_short_names <- sapply(row.names(test), FUN = function(x){strsplit(x,"\\|")[[1]][2]})
+  }
+  test$diff <- abs(test$mean.diff) > 0.2 & test$fdr < 0.05
+  test$fit_value <- dapars[row.names(test),]$fit_value
+  test$predicted_p_APA <- dapars_orig[row.names(test),]$Predicted_Proximal_APA
+  test$loci <- dapars_orig[row.names(test),]$Loci
+  test$strand = sapply(strsplit(row.names(test), '\\|'), FUN = function(x){x[4]})
+  test$APA_dist = 0
+  test[test$strand == '+',]$APA_dist <- abs(sapply(strsplit(test[test$strand == '+',]$loci, '-'), 
+                                                   FUN = function(x){as.numeric(strsplit(x[1], ':')[[1]][2])}) - test[test$strand == '+',]$predicted_p_APA)-1
+  test[test$strand == '-',]$APA_dist <- abs(sapply(strsplit(test[test$strand == '-',]$loci, '-'), 
+                                                   FUN = function(x){as.numeric(x[2])}) - test[test$strand == '-',]$predicted_p_APA)-1
+  
+  #test$APA_dist <- abs(sapply(strsplit(test$loci, '-'), FUN = function(x){as.numeric(x[2])}) - test$predicted_p_APA)-1
+  
+  gene_res <- data.frame(do.call(rbind, tapply(row.names(test), test$gene_short_names, function(x){
+    df <- test[x,]
+    min_pval <- min(df[,'pval'])
+    min_pval_ind = which(df[,'pval'] == min_pval)
+    min_pval_ind <- min_pval_ind[which(abs(df[min_pval_ind, 'mean.diff']) == max(abs(df[min_pval_ind, 'mean.diff'])))][1]
+    if(!is.null(combine_p)){
+      df[min_pval_ind,'pval'] <- metapod::combineParallelPValues(as.list(df[,'pval']), method = combine_p)$p.value
+    }
+    return(cbind(df[min_pval_ind,], dapars[x[min_pval_ind],c(1,2,3)]))
+  })))
+  gene_res$padj <- p.adjust(gene_res$pval)
+  gene_res$fdr <- qvalue(gene_res$pval)$qvalue
+  gene_res$diff <- abs(gene_res$mean.diff) > 0.2 & gene_res$fdr < 0.05
+  print(length(unique((test$gene_short_names))))
+  pdui <- dapars_orig[,grepl('PDUI', colnames(dapars_orig))]
+  colnames(pdui) <- colnames(d_long)
+  pdui <- pdui[row.names(d_long),]
+  pdui_impute <- t(apply(pdui, 1, FUN = function(x){x[is.na(x)] = mean(x, na.rm =T); x}))
+  
+  return(list(deg= test, long = d_long, gene_res = gene_res, short = d_short, df = dapars_orig, pdui = pdui, pdui_imp = pdui_impute, gene_universe = all_genes))
+}
+
+
+
+deg_utr2 <- function(file, ct, compare, meta, impute = F, 
+                     method = "fisher.test", filter_by_PAS_motif = TRUE,
+                     filter_by_APA_dist = TRUE, 
+                     alpha = 0.05, combine_p = NULL, diff_thresh = 0.05,
+                     fasta_file = "../mouse_rat_proposal//dataset/igv/mouse/mouse_spike.fa",
+                     expr_filt = 10, min_samp_filt = 5, na_filt = 5, 
+                     utr_cov_filt = 5, old_apa_dist = T, filter_by_pas_dist = NULL) {
+  
   ## read in the new dapars file that includes long. short and PDUI values
   dapars <- read.csv(file, sep = "\t", header = T, row.names = 1)
   # dapars <- dapars[,!grepl(regex('^X'), colnames(dapars))]
@@ -1607,18 +1891,24 @@ deg_utr2 <- function(file, ct, compare, meta, impute = F, method = "fisher.test"
   # colnames(dapars) <- str_remove(colnames(dapars), '^X')
   samples <- row.names(subset(meta, cellType %in% compare))
   dapars <- cbind(dapars[, c(1, 2, 3)], dapars[, grepl(regex(paste(samples, collapse = "|")), colnames(dapars))])
-
   ct <- ct[, samples]
-  ## Filter first based on coverage of the each gene's entire body
-  ## Only account for UTR coverage in genes that are assigned at have average expression of at least 5 uniquely mapped reads across all samples
-  genes <- row.names(ct)[rowMeans(ct) > 5]
-  # genes <- intersect(genes, row.names(ct)[rowSums(ct[,row.names(subset(meta, cellType == compare[2]))] > 10) > 0])
+  
   dapars$gene_short_names <- sapply(row.names(dapars), FUN = function(x) {
     strsplit(x, "\\|")[[1]][2]
   })
   dapars_orig <- dapars
   all_genes <- unique(dapars$gene_short_names)
   cat("Total genes assessed: ", length(unique((dapars$gene_short_names))), "genes\n")
+  ## Filter first based on gene expression overall in both conditions (we don't want differential expression to affect results too much)
+  genes <- row.names(ct)[rowSums(ct[,row.names(subset(meta, cellType == compare[1]))] > expr_filt) > min_samp_filt]
+  genes <- intersect(genes, row.names(ct)[rowSums(ct[,row.names(subset(meta, cellType == compare[2]))] > expr_filt) > min_samp_filt])
+  
+  
+  
+  
+  ## Only account for UTR coverage in genes that are assigned at have average expression of at least 5 uniquely mapped reads across all samples
+  genes <- row.names(ct)[rowMeans(ct) > expr_filt]
+  
   dapars <- dapars[dapars$gene_short_names %in% genes, ]
   cat("filtering based on gene expression: left with ", length(unique((dapars$gene_short_names))), "genes\n")
   # dapars <- subset(dapars, fit_value >= 10) # Maybe filter also based on regression fit value
@@ -1645,6 +1935,9 @@ deg_utr2 <- function(file, ct, compare, meta, impute = F, method = "fisher.test"
   colnames(d_pdui) <- sapply(strsplit(colnames(d_pdui), "_"), FUN = function(x) {
     strsplit(x[1], "\\.")[[1]][1]
   })
+  d_long <- d_long[,row.names(meta)]
+  d_short <- d_short[,row.names(meta)]
+  d_pdui<- d_pdui[,row.names(meta)]
   # select filtering genes based on number of passes (Non NAs) and overall coverage (average > 2 either in long or short UTR in both conditions)
   grp <- meta[colnames(d_pdui), "cellType"]
   btch <- meta[colnames(d_pdui), "experiment"]
@@ -1652,12 +1945,12 @@ deg_utr2 <- function(file, ct, compare, meta, impute = F, method = "fisher.test"
   cond2_ind <- which(grp == compare[2])
   # print(d_pdui[dapars$gene_short_name == 'Cdk1',])
   ## NA FILTER
-  # onyly keep genes that have at least than 3 non NAs in terms of coverage in both conditions
-  na.filt.genes <- rowSums(!is.na(d_pdui[, cond1_ind])) >= 3 & rowSums(!is.na(d_pdui[, cond2_ind])) >= 3
+  # onyly keep genes that have at least than na_filt non-NAs in terms of coverage in both conditions
+  na.filt.genes <- rowSums(!is.na(d_pdui[, cond1_ind])) >= na_filt & rowSums(!is.na(d_pdui[, cond2_ind])) >= na_filt
 
   dapars <- dapars[na.filt.genes, ]
 
-  cat("filtering based on number of non NAs in each condition ( > 3 in each condition): left with ", length(unique((dapars$gene_short_names))), "genes\n")
+  cat("filtering based on number of non NAs in each condition ( > ", na_filt," in each condition): left with ", length(unique((dapars$gene_short_names))), "genes\n")
 
 
   d_long <- d_long[na.filt.genes, ]
@@ -1665,15 +1958,18 @@ deg_utr2 <- function(file, ct, compare, meta, impute = F, method = "fisher.test"
   d_pdui <- d_pdui[na.filt.genes, ]
 
   # Filter based on coverage of UTR regions
-  c1.filt.genes <- rowMeans(d_long[, cond1_ind], na.rm = T) > 1 | rowMeans(d_short[, cond1_ind], na.rm = T) > 1
-  c2.filt.genes <- rowMeans(d_long[, cond2_ind], na.rm = T) > 1 | rowMeans(d_short[, cond2_ind], na.rm = T) > 1
+  c1.filt.genes <- rowMeans(d_long[, cond1_ind], na.rm = T) > utr_cov_filt | rowMeans(d_short[, cond1_ind], na.rm = T) > utr_cov_filt
+  c2.filt.genes <- rowMeans(d_long[, cond2_ind], na.rm = T) > utr_cov_filt | rowMeans(d_short[, cond2_ind], na.rm = T) > utr_cov_filt
 
   final.filt.genes <- c1.filt.genes & c2.filt.genes
 
   # filtering matrices with genes selected prior
   dapars <- dapars[final.filt.genes, ]
-  d_long <- d_long[final.filt.genes, ] %>% mutate(across(everything(), replace_na, 0))
-  d_short <- d_short[final.filt.genes, ] %>% mutate(across(everything(), replace_na, 0))
+  d_long <- d_long[final.filt.genes, ]
+  d_short <- d_short[final.filt.genes, ]
+  #d_pdui <- d_pdui[final.filt.genes, ]
+  #d_long1 <- d_long[final.filt.genes, ] %>% mutate(across(everything(), replace_na, 0))
+  #d_short1 <- d_short[final.filt.genes, ] %>% mutate(across(everything(), replace_na, 0))
   d_pdui <- d_long / (d_long + d_short)
   cat("filtering based on number of mean coverage of long/short UTR in both condition: left with ", length(unique((dapars$gene_short_names))), "genes\n")
   if (impute) {
@@ -1784,20 +2080,27 @@ deg_utr2 <- function(file, ct, compare, meta, impute = F, method = "fisher.test"
     l1 <- length(cond1_ind)
     l2 <- length(cond2_ind)
     d_long1 <- d_long
-    d_long1[is.na(d_long1)] <- 0
+    #d_long1[is.na(d_long1)] <- 0
     d_short1 <- d_short
-    d_short1[is.na(d_short1)] <- 0
+    #d_short1[is.na(d_short1)] <- 0
+    d_pdui1 <- d_pdui
     utrl1_mean <- round(rowMeans(d_long1[, cond1_ind], na.rm = T))
     utrl2_mean <- round(rowMeans(d_long1[, cond2_ind], na.rm = T))
     utrs1_mean <- round(rowMeans(d_short1[, cond1_ind], na.rm = T))
     utrs2_mean <- round(rowMeans(d_short1[, cond2_ind], na.rm = T))
-    test <- do.call(rbind, pblapply(row.names(d_long), FUN = function(x) {
+    pdui1_mean <- rowMeans(d_pdui1[, cond1_ind], na.rm = T)
+    pdui2_mean <- rowMeans(d_pdui1[, cond2_ind], na.rm = T)
+    #pdui1_mean <- utrl1_mean/(utrl1_mean + utrs1_mean )
+    #pdui2_mean <- utrl2_mean/(utrl2_mean + utrs2_mean )
+    test <- do.call(rbind, pblapply(row.names(d_long1), FUN = function(x) {
       # utr_l1 <- d_long[x,cond1_ind][!is.na(d_long[x,cond1_ind])] # long utr coverage in condition 1
       # utr_l2 <- d_long[x,cond2_ind][!is.na(d_long[x,cond2_ind])] # short utr coverage in condition 2
       # utr_s1 <- d_short[x,cond1_ind][!is.na(d_short[x,cond1_ind])] # long utr coverage in condition 1
       # utr_s2 <- d_short[x,cond2_ind][!is.na(d_short[x,cond2_ind])] # short utr coverage in condition 2
-      pdui_1 <- mean(d_pdui[x, cond1_ind][!is.na(d_pdui[x, cond1_ind])])
-      pdui_2 <- mean(d_pdui[x, cond2_ind][!is.na(d_pdui[x, cond2_ind])])
+      pdui_1 <- pdui1_mean[x]
+      pdui_2 <- pdui2_mean[x]
+    
+      
       # c(fisher.test(x = rbind(c(mean(utr_l1), mean(utr_s1)), c(mean(utr_l2), mean(utr_s2))))$p.value, pdui_2 - pdui_1)
       twobytwo <- rbind(c(utrl1_mean[x], utrs1_mean[x]), c(utrl2_mean[x], utrs2_mean[x]))
       c(fisher.test(x = twobytwo)$p.value, pdui_2 - pdui_1)
@@ -1829,24 +2132,45 @@ deg_utr2 <- function(file, ct, compare, meta, impute = F, method = "fisher.test"
   test$fit_value <- dapars[row.names(test), ]$fit_value
   test$predicted_p_APA <- dapars_orig[row.names(test), ]$Predicted_Proximal_APA
   test$loci <- dapars_orig[row.names(test), ]$Loci
-  test$strand <- sapply(strsplit(row.names(test), "\\|"), FUN = function(x) {
-    x[4]
-  })
+  test$strand <- sapply(strsplit(row.names(test), "\\|"), FUN = function(x) {x[4]})
   test$APA_dist <- 0
-  test[test$strand == "+", ]$APA_dist <- abs(sapply(strsplit(test[test$strand == "+", ]$loci, "-"),
-    FUN = function(x) {
-      as.numeric(strsplit(x[1], ":")[[1]][2])
-    }
-  ) - test[test$strand == "+", ]$predicted_p_APA) - 1
-  test[test$strand == "-", ]$APA_dist <- abs(sapply(strsplit(test[test$strand == "-", ]$loci, "-"),
-    FUN = function(x) {
-      as.numeric(x[2])
-    }
-  ) - test[test$strand == "-", ]$predicted_p_APA) - 1
-  # test <- subset(test, APA_dist >= 75)
+  if(!old_apa_dist){
+    test$utr_length <- sapply(row.names(test), function(x){as.numeric(strsplit(x, "\\|")[[1]][3])})
+    test$APA_dist <- sapply(seq_len(nrow(test)), function(i){
+      loci = as.numeric(strsplit(strsplit(test[i, 'loci'], ":")[[1]][2], '-')[[1]])
+      if(test[i, 'strand'] == '+'){
+        test[i, 'predicted_p_APA']-(loci[2]-test[i, 'utr_length'])-1
+      }else{
+        loci[1]+test[i, 'utr_length']- test[i, 'predicted_p_APA']-1
+     }
+    })
+    test$offset <- sapply(seq_len(nrow(test)), function(i){
+      loci = as.numeric(strsplit(strsplit(test[i, 'loci'], ":")[[1]][2], '-')[[1]])
+      if(test[i, 'strand'] == '+'){
+        loci[2]- test[i, 'utr_length'] - loci[1]
+      }else{
+        loci[2] - (loci[1]+test[i, 'utr_length'])
+      }
+    })
+  }else{
+    test[test$strand == "+", ]$APA_dist <- abs(sapply(strsplit(test[test$strand == "+", ]$loci, "-"),
+      FUN = function(x) {
+        as.numeric(strsplit(x[1], ":")[[1]][2])
+      }
+    ) - test[test$strand == "+", ]$predicted_p_APA) - 1
+    test[test$strand == "-", ]$APA_dist <- abs(sapply(strsplit(test[test$strand == "-", ]$loci, "-"),
+      FUN = function(x) {
+        as.numeric(x[2])
+      }
+    ) - test[test$strand == "-", ]$predicted_p_APA) - 1
+  }
+
   if (filter_by_PAS_motif) {
     test <- post_dapars_pas_filter(test, fasta_file, up_range = 80, down_range = 120, offset = 0)$PAS_motif
     test <- subset(test, num_motif > 0)
+  }
+  if (!is.null(filter_by_pas_dist)){
+    test <- subset(test, APA_dist > filter_by_pas_dist)
   }
   test$padj <- p.adjust(test$pval, method = "BH")
   test$fdr <- qvalue(test$pval)$qvalue
@@ -1875,7 +2199,7 @@ deg_utr2 <- function(file, ct, compare, meta, impute = F, method = "fisher.test"
     x
   }))
 
-  return(list(deg = test, long = d_long, gene_res = gene_res, short = d_short, df = dapars_orig, pdui = pdui, pdui_imp = pdui_impute, gene_universe = all_genes))
+  return(list( deg = test, long = d_long, gene_res = gene_res, short = d_short, df = dapars_orig, pdui = pdui, pdui_imp = pdui_impute, gene_universe = all_genes))
 }
 
 
@@ -1895,7 +2219,7 @@ fisher_proportion_test <- function(nascent, mature, groups, control = "mouseEgg"
   res <- data.frame(do.call(rbind, lapply(1:nrow(nascent), FUN = function(i) {
     # diff <- c(nascent_p2[i]- nascent_p1[i])/mean(nascent[i,]/c(mature[i,]+nascent[i,]), na.rm=T)
     diff <- log2(nascent_p02[i] / nascent_p01[i]) # /(sum(nascent[i,])/sum(mature[i,]))
-    c(fisher.test(x = rbind(c(mean(nascent_c[i, ]), mean(mature_c[i, ])), c(mean(nascent_t[i, ]), mean(mature_t[i, ]))))$p.value, diff)
+    c(fisher.test(x = round(rbind(c(mean(nascent_c[i, ]), mean(mature_c[i, ])), c(mean(nascent_t[i, ]), mean(mature_t[i, ])))))$p.value, diff)
   })))
 
   row.names(res) <- row.names(nascent)
@@ -2022,8 +2346,7 @@ addSmallLegend <- function(myPlot, pointSize = 1.5, textSize = 7, spaceLegend = 
 }
 
 cp_tree_ridge_plot <- function(res, n_cat = 50, nclust = 8, alpha = 0.05, geneSet = NULL) {
-  require(ggtree)
-  require(aplot)
+
   res@result <- subset(res@result, qvalue < alpha)
   if (sum(grepl("GO", res@result$ID))) {
     res@setType <- "BP"
@@ -2067,4 +2390,45 @@ cp_tree_ridge_plot <- function(res, n_cat = 50, nclust = 8, alpha = 0.05, geneSe
   print(ridge_tree)
   return(list(tree = res_tree, ridge = res_ridge, both = ridge_tree))
   # res_ridge  %>% insert_left(res_tree, width = 2)
+}
+
+
+volcano_plot <- function(res, pval_col = 'fdr', top_genes = NULL, alpha = 0.05, fc = log2(2), main = NULL){
+  res <- subset(res, !is.na(res$Log2FC))
+  res$padjust <- res[[pval_col]]
+  if(!'gene_short_name' %in% colnames(res)){
+    res$gene_short_name <- row.names(res)
+  }
+  if(is.null(top_genes)){
+    top_up_genes <- row.names(res[order(res$Log2FC, decreasing = T),])[1:20]
+    top_down_genes <- row.names(res[order(res$Log2FC),])[1:20]
+    top_genes <- c(top_up_genes, top_down_genes)
+  }
+  res$deg <- "NoDE"
+  res[res$fdr < alpha & res$Log2FC > fc,]$deg <- "up-regulated"
+  res[res$fdr < alpha & res$Log2FC < -fc,]$deg <- "down-regulated"
+  res[!row.names(res) %in% top_genes,]$gene_short_name <- NA
+  res[res$deg == 'NoDE',]$gene_short_name <- NA
+  res[grepl('LOC',row.names(res)) | grepl('Rik', row.names(res)) | grepl('Gm', row.names(res)),]$gene_short_name <- NA
+  p <- ggplot(data=res, aes(x=Log2FC, y=-log10(padjust), color = deg, label=gene_short_name)) + geom_point(size = 0.2)+geom_label_repel(size=3, max.overlaps = 300) 
+  theme <- theme_bw() + theme(
+    plot.title = element_text(hjust = 0.5, size = 14),
+    panel.border = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line(colour = "black"),
+    axis.text.x = element_text(size = 10), axis.title.x = element_text(size = 16), 
+    axis.text.y = element_text(size = 10), axis.title.y = element_text(size = 16), 
+    legend.position = "none",
+  )
+  p <- p+theme+
+    xlim(min(res$Log2FC),max(res$Log2FC))+ 
+    ylim(0, 13)+ggtitle(main)+
+    ylab(expression('-Log'['10']*'Pvalue'))+
+    xlab(expression('-Log'['2']*'FC'))+
+    scale_color_manual(values = c( "#6f95e6", "grey","#a4302a"))+
+    geom_vline(xintercept = -1, linetype="dashed",color = "red", size=1)+
+    geom_vline(xintercept = 1, linetype="dashed",color = "red", size=1)+
+    geom_hline(yintercept = -log10(0.05), linetype="dashed",color = "red", size=1)
+  return(p)
 }
