@@ -1,69 +1,56 @@
 # Load packages
 suppressPackageStartupMessages({
-  library(cowplot)
-  library(scales)
-  library(betareg)
-  library(ggpubr)
-  library(tidyr)
-  library(qvalue)
-  library(pbapply)
-  library(lmtest)
-  library(biomaRt)
-  library(ggrepel)
-  library(reticulate)
-  library(heatmap3)
-  library(ggplot2)
-  library(ggfortify)
-  library(stringr)
-  library(RColorBrewer)
-  library(MKmisc)
-  library(MAST)
-  library(reticulate)
-  library(edgeR)
+  library(DEXSeq)
+  library(DRIMSeq)
   library(GGally)
-  library(GSEABase)
-  library(limma)
-  library(reshape2)
-  library(data.table)
-  library(knitr)
-  library(stringr)
+  library(GenomicFeatures)
+  library(MAST)
+  library(MKmisc)
   library(NMF)
-  library(rsvd)
   library(RColorBrewer)
-  library(pcaMethods)
-  library(segmented)
-  library(robust)
-  library(MASS)
-  library(umap)
-  library(QoRTs)
-  library(tximport)
-  library(Seurat)
-  require(ReactomePA)
-  require(clusterProfiler)
-  require(meshes)
-  library(msigdbr)
+  library(ReactomePA)
+  library(betareg)
+  library(biomaRt)
+  library(clusterProfiler)
+  library(cowplot)
+  library(data.table)
   library(doParallel)
+  library(dplyr)
+  library(edgeR)
+  library(ggbeeswarm)
+  library(ggfortify)
+  library(ggplot2)
+  library(ggpubr)
+  library(ggraph)
+  library(ggrepel)
   library(grid)
   library(gridExtra)
+  library(heatmap3)
+  library(knitr)
+  library(lmtest)
+  library(meshes)
+  library(msigdbr)
   library(pathview)
-  library(igraph)
-  library(ggraph)
+  library(pbapply)
+  library(pcaMethods)
   library(qvalue)
-  library(ggrepel)
-  library(DRIMSeq)
-  library(ggbeeswarm)
+  library(reshape2)
+  library(reticulate)
+  library(rsvd)
+  library(scales)
   library(stageR)
-  library(DEXSeq)
+  library(stringr)
+  library(tidyr)
   library(trackViewer)
-  library(GenomicFeatures)
-  require(ReactomePA)
-  require(clusterProfiler)
-  require(meshes)
-  require(dplyr)
+  library(tximport)
+  library(umap)
   require(GenomicRanges)
-  require(trackViewer)
-  require(ggtree)
+  require(ReactomePA)
   require(aplot)
+  require(clusterProfiler)
+  require(ggtree)
+  require(meshes)
+  require(trackViewer)
 })
 reticulate::use_condaenv("scvelo")
 scv <- reticulate::import("scvelo")
@@ -1326,12 +1313,8 @@ get_organism_items <- function(organisms){
   return(list(orgdb = orgdb, orgkegg = orgabv, orgname = orgname))
 }
 
-enrich_CP <- function(ora_genes, organisms, n_type = 'ENSEMBL',universe = NULL, classic = T, GO_BP_only = F, enrich_all = T, Msig = NULL, alpha = 0.5, combine = T, simple_combine = F, full_combine = T){
-  require(ReactomePA)
-  require(clusterProfiler)
-  require(org.Sc.sgd.db)
-  require(meshes)
-  require(dplyr)
+enrich_CP <- function(ora_genes, organisms, n_type = 'ALIAS',universe = NULL, classic = T, GO_BP_only = F, enrich_all = T, Msig = NULL, alpha = 0.5, simple_combine = F, full_combine = T){
+  
   items = get_organism_items(organisms = organisms)
   orgabv = items$orgkegg
   orgname = items$orgname
@@ -1427,8 +1410,7 @@ enrich_CP <- function(ora_genes, organisms, n_type = 'ENSEMBL',universe = NULL, 
       GSE_results[[n]] <- Msig_res[[n]]
     }
   }
-  if(combine){
-    if(simple_combine == T & classic){
+  if(simple_combine == T){
       combined <- GSE_results[['GO_BP_ora']]
       res_ <- c(c("WKP_ora", 'GO_BP_ora','KEGG_ora','MKEGG_ora','REACT_ora'), Msig)
       combined@result <- do.call(rbind, lapply(res_, FUN = function(x){
@@ -1445,7 +1427,7 @@ enrich_CP <- function(ora_genes, organisms, n_type = 'ENSEMBL',universe = NULL, 
       combined@result$qvalue <- qvalue(combined@result$pvalue)$qvalue
       GSE_results[['combined']] <- combined
     }
-    if(full_combine == T){
+  if(full_combine == T){
       all_sets <- NULL
       all_sets_n <- NULL
       if(classic){
@@ -1495,8 +1477,8 @@ enrich_CP <- function(ora_genes, organisms, n_type = 'ENSEMBL',universe = NULL, 
                                                                          maxGSSize = 500,minGSSize = 10,  
                                                                          universe = universe, pvalueCutoff = alpha, 
                                                                          qvalueCutoff = alpha), OrgDb = orgdb, keyType = 'ENTREZID')},error=function(cond){return(NULL)})}
-    }
   }
+  
   
   return(GSE_results)
 }
@@ -1504,7 +1486,7 @@ enrich_CP <- function(ora_genes, organisms, n_type = 'ENSEMBL',universe = NULL, 
 
 
 
-gse_CP <- function( organisms, logFC=NULL, n_type = 'ENSEMBL', classic = T, simplify_go = T, combine = T, simple_combine = F, full_combine = T, Msig = NULL, alpha = 1, disease= F){
+gse_CP <- function( organisms, logFC=NULL, n_type = 'ALIAS', classic = T, simplify_go = T, combine = T, simple_combine = F, full_combine = T, Msig = NULL, alpha = 1, disease= F){
   require(ReactomePA)
   require(clusterProfiler)
   require(org.Sc.sgd.db)
@@ -2306,12 +2288,14 @@ plotDEXSeqDTU <- function(expData = NULL, geneID = NULL, samps = NULL, isProport
     theme_bw() +
     ggtitle(geneID) +
     xlab("Transcripts") +
-    theme(axis.text.x = element_text(angle = 15, vjust = 0.5, hjust = 0.5, size = 8), axis.title = element_text(size = 12), title = element_text(size = 12))
+    theme(axis.text.x = element_text(angle = 15, vjust = 0.5, hjust = 0.5, size = 10), 
+          axis.title = element_text(size = 12), title = element_text(size = 12),
+          legend.position = 'none')
 
   if (!isProportion) {
     p <- p + ylab("log(Expression)")
   } else {
-    p <- p + ylab("Proportions")
+    p <- p + ylab("Proportions")+ylim(c(0,1))
   }
   p
 }
@@ -2368,7 +2352,7 @@ cp_tree_ridge_plot <- function(res, n_cat = 50, nclust = 8, alpha = 0.05, geneSe
     showCategory = min(n_cat, nrow(res@result)),
     geneClusterPanel = "pie",
     cluster.params = list(method = "ward.D2", n = nclust, color = gcolors, label_words_n = 4, label_format = 25),
-    color = "p.adjust", offset_tiplab = 0.8, fontsize = 4
+    color = NULL, offset_tiplab = 0.8, fontsize = 4
   ) +
     geom_tiplab(
       offset = 0.8, hjust = 0,
@@ -2376,18 +2360,23 @@ cp_tree_ridge_plot <- function(res, n_cat = 50, nclust = 8, alpha = 0.05, geneSe
       align = TRUE, size = 3.5, lineheight = 0.75
     ) + xlim(c(0, 20)) + scale_size(
       name = "number of genes",
-      range = c(1, 4)
-    ))
+      limits = c(10,110),
+      breaks = c(25,50,75,100),
+      range = c(1, 5)
+    ), pointSize = 2, textSize = 10)
   tree <- res_tree
   res_tree$layers[c(7, 8)] <- NULL
   res_tree$layers[c(3, 4)] <- NULL
-  res_ridge <- addSmallLegend(ridgeplot(res, showCategory = min(n_cat, nrow(res@result))) + scale_fill_viridis_c() +
-    theme(axis.title.y = element_blank(), axis.text.y = element_blank()) + xlim(c(-4, 4)) + geom_vline(xintercept = 0, linetype = "dashed", color = "red") + xlab(expression("log"[2] * "FC")), pointSize = 3, textSize = 10, spaceLegend = 0.9)
+  res_ridge <- addSmallLegend(ridgeplot(res, showCategory = min(n_cat, nrow(res@result))) + 
+                                scale_fill_viridis_c(name = 'FDR', limits= c(0, 0.06), breaks = c(0.01, 0.02, 0.03, 0.04,0.05))+
+    theme(axis.title.y = element_blank(), axis.text.y = element_blank()) + xlim(c(-4, 4)) + 
+      geom_vline(xintercept = 0, linetype = "dashed", color = "red") + 
+      xlab(expression("log"[2] * "FC")), pointSize = 3, textSize = 10, spaceLegend = 1.5)
 
   res_ridge$data$label <- res_ridge$data$category
   # return(list(ridge = res_ridge, tree=res_tree))
   ridge_tree <- res_ridge %>% insert_left(res_tree, width = 3)
-  print(ridge_tree)
+  #print(ridge_tree)
   return(list(tree = res_tree, ridge = res_ridge, both = ridge_tree))
   # res_ridge  %>% insert_left(res_tree, width = 2)
 }

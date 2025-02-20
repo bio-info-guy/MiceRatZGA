@@ -69,12 +69,12 @@ umap_axis <- ggh4x::guide_axis_truncated(
   trunc_lower = unit(0, "npc"),
   trunc_upper = unit(3, "cm")
 )
-sample_PCA(DESeq2::varianceStabilizingTransformation(as.matrix(mouse$ct$bio)), mouse$meta, umap =  T, dimension=2 ,
+mouse_umap <- sample_PCA(DESeq2::varianceStabilizingTransformation(as.matrix(mouse$ct$bio)), mouse$meta, umap =  T, dimension=2 ,
            main = "Mouse", labeling = F, point_size = 2, color_by = 'cellType', umap.config = umap_config, legend.position = c(0.3, 1.0))+theme(aspect.ratio=1)
-ggsave('./mouse_umap.png', height = 3, width = 3)
-sample_PCA(DESeq2::varianceStabilizingTransformation(as.matrix(rat$ct$bio)), rat$meta, umap =  T, dimension=2 ,
+ggsave('./mouse_umap.png', plot = mouse_umap,height = 2.5, width = 2.5)
+rat_umap <- sample_PCA(DESeq2::varianceStabilizingTransformation(as.matrix(rat$ct$bio)), rat$meta, umap =  T, dimension=2 ,
            main = "Rat", labeling = F, point_size = 2, color_by = 'cellType', umap.config = umap_config, legend.position = c(1.0, 1.0))+theme(aspect.ratio=1)
-ggsave('./rat_umap.png', height = 3, width = 3)
+ggsave('./rat_umap.png',plot = rat_umap, height = 2.5, width = 2.5)
 
 
 
@@ -112,12 +112,14 @@ tree_ridge_test <- cp_tree_ridge_plot(mast_gse_mouse$combined_full, alpha = 0.05
                                                                                    'WP113','GO:0051017','R-MMU-69620', 'GO:0140013', 
                                                                                    'GO:0051028', 'R-MMU-453276', "R-MMU-194441",
                                                                                    "R-MMU-2980766","R-MMU-5693532","GO:0006086","R-MMU-69306"))
-ggsave(plot = tree_ridge_test$both, './mouse_gsea_ridge.png', height = 9, width =7, units = 'in')
+print(tree_ridge_test$both) & theme(legend.position='bottom', legend.text = element_text(angle = 20), legend.title.position = 'top')
+ggsave( './mouse_gsea_ridge.png', height = 9, width =6, units = 'in')
 
-custom_ridgeplot(mast_gse_rat$combined,  top_n = 10)+theme(plot.title = element_text(hjust = 1, size = 12), axis.text.y = element_text(face="bold", color="black", size=8))+ggtitle('GSEA of Rat DEGs')
+#custom_ridgeplot(mast_gse_rat$combined,  top_n = 10)+theme(plot.title = element_text(hjust = 1, size = 12), axis.text.y = element_text(face="bold", color="black", size=8))+ggtitle('GSEA of Rat DEGs')
 
 tree_ridge_test_rat <- cp_tree_ridge_plot(mast_gse_rat$combined_full, alpha = 0.05, nclust = 5)
-ggsave(plot = tree_ridge_test_rat$both, './rat_gsea_ridge.png', height = 9, width =6, units = 'in')
+print(tree_ridge_test_rat$both) & theme(legend.position='bottom', legend.text = element_text(angle = 20), legend.title.position = 'top')
+ggsave('./rat_gsea_ridge.png', height = 9, width =4, units = 'in')
 
 volcano_plot(mast_mouse$mouseEgg_v_mouseZygote$DESig, pval_col = 'fdr',fc = log2(2), top_genes = c('Nup37', 'Nup54', 'Obox1', 'Obox2', 'Obox5', 'Obox7', 'Nup35', 'Rpl9', 
                                                                                                        'Rpl3', 'Rpl26', 'Rpl12', 'Rpl19', 'Rpl18', 'Rpl3','Mastl','Cdc20', 
@@ -237,13 +239,13 @@ mouse_rat_nascent_df <- data.frame(percentages = c(perc_mouse_genes_unspliced*10
 
 mouse_rat_nascent_df %>% reshape2::melt(c('cellType', 'organism', 'tissue'))   %>% ggbarplot( x = 'tissue', y = "value", color = "cellType",fill='cellType', facet.by = 'organism', add.params = list(color = '#ffa500'), 
                                                                     palette = DOT_COLOR, add = "mean_se",position = position_dodge(0.8))+
-  stat_compare_means( method = 'wilcox.test', label = "p.signif", label.y.npc = c(0.85, 0.85), label.x.npc = c(0.05, 0.4), size = 8)+
+  stat_compare_means( method = 'wilcox.test', label = "p.signif", label.y.npc = c(0.8, 0.8), label.x.npc = c(0.05, 0.4), size = 9)+
   xlab('Cell Type')+ylab('Perctange of Nascent Reads (%)')+theme_classic2(base_size = 15)+ 
   theme(legend.position="none", 
         axis.text.x = element_text(size = 14, color = 'black'),
         strip.text.x = element_text(size = 16, colour = "black"),
         axis.text.y = element_text(size = 14, color = 'black'))+scale_y_continuous(name="Perctange of Nascent Reads (%)", labels = label_number(scale_cut = cut_short_scale()))
-ggsave('percent_gene_unspliced.png', width = 5,height = 4.5)
+ggsave('percent_gene_unspliced.png', width = 4,height = 3.5)
 
 
 
@@ -254,13 +256,15 @@ mouse_intergenic1 <- read_htseq_intergenic('./dataset/output_mouse/mouse_interge
 rat_intergenic1 <- read_htseq_intergenic('./dataset/output_rat/rat_intergenic_1000.star.ct', ct = rat$ct$bio, meta = rat$meta, 1)
 mouse_rat_int_df <- rbind(rat_intergenic1$small_df, mouse_intergenic1$small_df)[c(colnames(rat_intron$spliced), colnames(mouse_intron$spliced)),]
 mouse_rat_int_df$organism <- c(rep('Rat', 25), rep('Mouse', 28))
-
+colnames(mouse_rat_int_df)[c(1,2)] <- c('> 10Kb from Gene', 'All Regions')
 mouse_rat_int_df %>% melt(c('cellType', 'organism')) %>% ggbarplot( x = "variable", y = "value", color = "cellType",fill='cellType', facet.by = 'organism', add.params = list(color = '#ffa500'), 
                                                                     palette = DOT_COLOR, add = "mean_se",position = position_dodge(0.8))+
-  stat_compare_means(aes(group = cellType), method = 'wilcox.test', label = "p.signif", label.y.npc = c(0.76, 0.76, 0.76 ,0.76), size = 8)+
-  xlab('Location')+ylab('Number of Regions')+theme_classic2(base_size = 15)+ 
-  theme(legend.position="none", axis.text.x = element_text(size = 14, color = 'black'),
-        axis.text.y = element_text(size = 14, color = 'black'))+scale_y_continuous(name="Number of Regions", labels = label_number(scale_cut = cut_short_scale()))
+  stat_compare_means(aes(group = cellType), method = 'wilcox.test', label = "p.signif", label.y.npc = c(0.6, 0.6, 0.6 ,0.6), size = 9)+
+  xlab('Intergenic Location')+ylab('Number of Intergenic Regions w Coverage')+theme_classic2(base_size = 15)+ 
+  theme(legend.position="none", axis.text.x = element_text(size = 12, color = 'black', angle = 15, vjust = 0.5),
+        strip.text.x = element_text(size = 16, colour = "black"),
+        axis.text.y = element_text(size = 14, color = 'black'))+
+  scale_y_continuous(name="No. Regions w Coverage", labels = label_number(scale_cut = cut_short_scale()))
 ggsave('intergenic_regions.png', width = 4,height = 3.5)
 
 mouse_unsplic_mast <- mast_diff(ct = mouse_intron$unspliced[mouse_intron$genes,], meta = mouse$meta[colnames(mouse_intron$unspliced),], normFactor = colMeans(mouse_intron$spliced/edgeR::cpm(mouse_intron$spliced), na.rm = T),control = 'mouseEgg', tpm = F, nbins = 0, min_per_bin = 50, freq = 0.1, min_cell_grp = 2, min_cell = 5, max_thres = 6, plot = T)[[1]]$DESig
@@ -368,7 +372,7 @@ test_vp <- plot_range_coverage(range = 'NC_051349.1:35,194,801-35,196,994', txdb
 test_vp <- plot_range_coverage(range = 'NC_000073.7:14,397,925-14,398,495', txdb=mouse_gtf, c('./dataset/mouse_apa_res/MF.sf.bw', './dataset/mouse_apa_res/MU.sf.bw'), log = T, cols = DOT_COLOR[c('mouseZygote', 'mouseEgg')], cell_names = c('Mouse zygote', 'Mouse oocyte' ), file_name_suffix = 'mouse', y_lim = c(0.08, 0.73))
 test_vp <- plot_range_coverage(range = 'NC_000075.7:124,117,990-124,121,100', txdb=mouse_gtf, c('./dataset/mouse_apa_res/MF.sf.bw', './dataset/mouse_apa_res/MU.sf.bw'), log = T, cols = DOT_COLOR[c('mouseZygote', 'mouseEgg')], cell_names = c('Mouse zygote', 'Mouse oocyte'), file_name_suffix = 'mouse', y_lim = c(0.08, 0.73))
 
-test_vp <- plot_range_coverage(range = 'NC_000078.7:87653600-87655400',txdb=mouse_gtf, c('./dataset/mouse_apa_res/MF.sf.bw', './dataset/mouse_apa_res/MU.sf.bw'), log = T, cols = DOT_COLOR[c('mouseZygote', 'mouseEgg')], cell_names = c('Mouse zygote', 'Mouse oocyte'), file_name_suffix = 'mouse',y_lim = c(0.08, 0.73))
+test_vp <- plot_range_coverage(txdb=mouse_gtf,  bw_file_list= c('./dataset/mouse_apa_res/MF.sf.bw', './dataset/mouse_apa_res/MU.sf.bw'), log = T, cols = DOT_COLOR[c('mouseZygote', 'mouseEgg')], cell_names = c('Mouse zygote', 'Mouse oocyte'), file_name_suffix = 'mouse', gene_name = 'Oog1', y_lim = c(0.08, 0.73))
 test_vp <- plot_range_coverage( txdb=rat_gtf, bw_file_list= c('./dataset/rat_apa_res/RF.sf.bw', './dataset/rat_apa_res/RU.sf.bw'), log = T, cols = DOT_COLOR[c('ratZygote', 'ratEgg')], cell_names = c('Rat zygote', 'Rat oocyte'), file_name_suffix = 'rat', gene_name = 'Oog1', y_lim = c(0.08, 0.73))
 test_vp <- plot_range_coverage(range = 'NC_000073.7:10448500-10464076', txdb=mouse_gtf, c('./dataset/mouse_apa_res/MF.sf.bw', './dataset/mouse_apa_res/MU.sf.bw'), log = T, cols = DOT_COLOR[c('mouseZygote', 'mouseEgg')], cell_names = c('Mouse zygote', 'Mouse oocyte'), file_name_suffix = 'mouse', y_lim = c(0.08, 0.73), gene_name = 'Nlrp4b')
 test_vp <- plot_range_coverage(range= 'NC_051336.1:70426100-70446800', txdb=rat_gtf, bw_file_list= c('./dataset/rat_apa_res/RF.sf.bw', './dataset/rat_apa_res/RU.sf.bw'), log = T, cols = DOT_COLOR[c('ratZygote', 'ratEgg')], cell_names = c('Rat zygote', 'Rat oocyte'), file_name_suffix = 'rat', y_lim = c(0.08, 0.73))
@@ -453,7 +457,7 @@ mouse_det_bygene <- table(tapply(subset(dexseq_mouse_stageR, gene < 0.05), subse
 rat_det_bygene <- table(tapply(subset(dexseq_rat_stageR, gene < 0.05), subset(dexseq_rat_stageR, gene < 0.05)$geneID, FUN = function(x){sum(x$transcript < 0.05)}))
 
 ## Num Transcript DTU summary BARPLOT
-transcript_DTU_summary <- data.frame(Species =  c(rep("Mouse" , 8) , rep("Rat" , 6)),
+transcript_DTU_summary <- data.frame(Species =  c(rep("Mouse" , 8) , rep("Rat" , 4)),
                               deg = c(names(mouse_det_bygene), names(rat_det_bygene)),
                               value = c(mouse_det_bygene, rat_det_bygene))
 transcript_DTU_summary$label <- transcript_DTU_summary$value
@@ -477,30 +481,33 @@ ggplot(transcript_DTU_summary, aes(fill=deg, y=value, x=Species, label = label))
 ggsave('./number_of_sig_tx_DTU.png', width = 3.7, height = 4.2)
 
 # Enrich GO BP 
-stager_mouse_ora <- enrich_CP(subset(dexseq_mouse_stageR, gene < 0.05)$geneID, universe = dexseq_mouse_stageR$geneID, organisms = 'mouse')
-stager_rat_ora <- enrich_CP(subset(dexseq_rat_stageR, gene < 0.05)$geneID, universe = dexseq_rat_stageR$geneID, organisms = 'rat')
+stager_mouse_ora <- enrich_CP(subset(dexseq_mouse_stageR, gene < 0.05)$geneID, universe = dexseq_mouse_stageR$geneID, organisms = 'mouse', full_combine = T)
+stager_rat_ora <- enrich_CP(subset(dexseq_rat_stageR, gene < 0.05)$geneID, universe = dexseq_rat_stageR$geneID, organisms = 'rat', full_combine = T)
 
 #make dotplots
-dotplot(stager_rat_ora$GO_BP_ora, showCategory=10, color='pvalue') +theme(axis.text.y = element_text(angle = 0, vjust = 0.5, hjust=0.5, size = 12), 
+rat_dtu_dot <- test_dotplot(stager_rat_ora$combined_full, showCategory=10, color='pvalue') 
+rat_dtu_dot <- rat_dtu_dot + theme(axis.text.y = element_text(angle = 0, vjust = 0.5, hjust=0.5, size = 12, colour = ifelse(rat_dtu_dot$data[order(rat_dtu_dot$data$GeneRatio),'qvalue'] < 0.05, 'red', 'black')), 
                                                                           axis.text.x = element_text(angle = 30, vjust = 0.5, hjust=0.5, size = 10), 
                                                                           legend.text = element_text(size=8), legend.key.size = unit(1, 'cm'),  
                                                                           legend.key.height = unit(0.3, 'cm'),legend.key.width = unit(0.3, 'cm'),
                                                                           legend.title = element_text(size=8))+xlab('Gene ratio')+
-  scale_fill_continuous(low="red", high="blue", name = 'pvalue', guide=guide_colorbar(reverse=TRUE), limits=c(0,0.002))+
-  scale_size(range=c(3,8), limits = c(5,240))
-ggsave('Rat_dex_dtu_GOBP.png', width = 5, height = 5.5)
+  scale_fill_continuous(low="red", high="blue", name = 'pvalue', guide=guide_colorbar(reverse=TRUE), limits=c(0,0.005))+
+  scale_size(range=c(3,8), limits = c(5,300))
+ggsave('Rat_dex_dtu_GOBP.png',plot = rat_dtu_dot, width = 5, height = 5.5)
 
-dotplot(stager_mouse_ora$GO_BP_ora, showCategory=10, color='pvalue') +theme(axis.text.y = element_text(angle = 0, vjust = 0.5, hjust=0.5, size = 12, colour = c(rep('red', 10))), 
+mouse_dtu_dot <- test_dotplot(stager_mouse_ora$combined_full, showCategory=10, color ='qvalue') 
+mouse_dtu_dot <- mouse_dtu_dot + theme(axis.text.y = element_text(angle = 0, vjust = 0.5, hjust=0.5, size = 12, colour = ifelse(mouse_dtu_dot$data[order(mouse_dtu_dot$data$GeneRatio),'qvalue'] < 0.05, 'red', 'black')), 
                                                                             axis.text.x = element_text(angle = 30, vjust = 0.5, hjust=0.5, size = 8), 
                                                                             legend.text = element_text(size=8), legend.key.size = unit(1, 'cm'),  
                                                                             legend.key.height = unit(0.3, 'cm'),legend.key.width = unit(0.3, 'cm'),
                                                                             legend.title = element_text(size=8))+xlab('Gene ratio')+
-  scale_fill_continuous(low="red", high="blue", name = 'pvalue', guide=guide_colorbar(reverse=TRUE), limits=c(0,0.002))+
-  scale_size(range=c(3,8), limits = c(5,240))
-ggsave('Mouse_dex_dtu_GOBP.png', width = 5, height = 5.5)
+  scale_fill_continuous(low="red", high="blue", name = 'FDR', guide=guide_colorbar(reverse=TRUE), limits=c(0,0.1))+
+  scale_size(range=c(3,8), limits = c(5,300))
+ggsave('Mouse_dex_dtu_GOBP.png', plot = mouse_dtu_dot,width = 5, height = 5.5)
 
 
-
+mouse_dtu$drimseq@samples$condition <- c('MU' = 'mouseEgg', 'MF' = 'mouseZygote')[mouse_dtu$drimseq@samples$condition]
+rat_dtu$drimseq@samples$condition <- c('RU' = 'ratEgg', 'RF' = 'ratZygote')[rat_dtu$drimseq@samples$condition]
 
 # Plot specific Genes
 
@@ -509,13 +516,13 @@ plotDEXSeqDTU(mouse_dtu$prop, 'Abi3bp', mouse_drim$samps, isProportion = T)
 
 
 plotDEXSeqDTU(mouse_dtu$prop, 'Bap1', mouse_dtu$drimseq@samples, isProportion = T)
-ggsave('mouse_Bap1.png', width =3.8, height = 3)
+ggsave('mouse_Bap1.png', width =3, height = 3)
 plotDEXSeqDTU(mouse_dtu$prop, 'Usp3', mouse_dtu$drimseq@samples, isProportion = T)
-ggsave('mouse_Usp3.png', width =3.8, height = 3)
+ggsave('mouse_Usp3.png', width =3, height = 3)
 plotDEXSeqDTU(rat_dtu$prop, 'Usp16', rat_dtu$drimseq@samples, isProportion = T)
-ggsave('rat_Usp16.png', width =3.8, height = 3)
+ggsave('rat_Usp16.png', width =3, height = 3)
 plotDEXSeqDTU(rat_dtu$prop, 'Rnf2', rat_dtu$drimseq@samples, isProportion = T)
-ggsave('rat_Rnf2.png', width =3.8, height = 3)
+ggsave('rat_Rnf2.png', width =3, height = 3)
 
 
 
@@ -525,11 +532,11 @@ ggsave('rat_Rnf2.png', width =3.8, height = 3)
 #UMAP plots
 sample_PCA(log(rat_dapars_sf_st25$pdui_imp+1), rat$meta, umap =  T, dimension=2 ,
            main = "Rat", labeling = F, point_size = 2, color_by = 'cellType',
-           umap.config = list(n_neighbors = 25, min_dist = 0.5, metric='cosine', seed = 12345), legend.position = c(1.07, 1.0))
+           umap.config = list(n_neighbors = 25, min_dist = 0.5, metric='cosine', seed = 12345), legend.position = c(0.4, 0.9))
 ggsave('rat_umap_DAP.png', units = 'in', dpi = 300, height = 3, width = 2.5)
 sample_PCA(log(mouse_dapars_sf_st25$pdui_imp+1), mouse$meta, umap =  T, dimension=2 ,
            main = "Mouse", labeling = F, point_size = 2, color_by = 'cellType', 
-           umap.config = list(n_neighbors = 25, min_dist = 0.5, metric='cosine', seed = 12345),legend.position = c(0.99, 0.3))
+           umap.config = list(n_neighbors = 25, min_dist = 0.5, metric='cosine', seed = 12345),legend.position = c(1.2, 0.8))+theme(plot.title = element_text(vjust = -5))
 ggsave('mouse_umap_DAP.png', units = 'in', dpi = 300, height = 3, width = 2.5)
 
 #DAPARS fishers exact test custom with filtering
@@ -552,39 +559,8 @@ for(n in colnames(mouse$ct$bio)){
 }
 
 
-utr_mouse_sf_st25_up <- enrich_CP(unique(subset(mouse_dapars_sf_st25$gene_res, APA_dist > 25 & diff & mean.diff > 0.2)$gene_short_names), universe = unique(mouse_dapars_sf_st25$gene_res$gene_short_names), logFC = NULL, organisms = 'mouse')
-utr_mouse_sf_st25_down <- enrich_CP(unique(subset(mouse_dapars_sf_st25$gene_res, APA_dist > 25 & diff & mean.diff < -0.2)$gene_short_names), universe = unique(mouse_dapars_sf_st25$gene_res$gene_short_names), logFC = NULL, organisms = 'mouse')
-
-
-
-mouse_dapars_sf_st75 <- deg_utr2('./dataset/mouse_apa_res/apa2_75.txt', mouse$ct$bio, c('mouseEgg', 'mouseZygote'), 
-                                 mouse$meta, filter_by_PAS_motif = T,combine_p = 'simes',
-                                 fasta_file = '../mouse_rat_proposal/dataset/igv/mouse/mouse_spike.fa',
-                                 utr_cov_filt = 1, min_samp_filt = 5, na_filt = 3, expr_filt = 10, old_apa_dist = F)
-
-mouse_dapars_sf_st75_a50 <- deg_utr2('./dataset/mouse_apa_res/apa2_75_q50.txt', mouse$ct$bio, c('mouseEgg', 'mouseZygote'), 
-                                 mouse$meta, filter_by_PAS_motif = T,combine_p = 'simes',
-                                 fasta_file = '../mouse_rat_proposal/dataset/igv/mouse/mouse_spike.fa',
-                                 utr_cov_filt = 1, min_samp_filt = 5, na_filt = 3, expr_filt = 10, old_apa_dist = F)
-
-mouse_dapars_sf_st150_e0 <- deg_utr2('./dataset/mouse_apa_res/apa2_e0_q50_st150.txt', mouse$ct$bio, c('mouseEgg', 'mouseZygote'), 
-                                         mouse$meta, filter_by_PAS_motif = T,combine_p = 'simes',
-                                         fasta_file = '../mouse_rat_proposal/dataset/igv/mouse/mouse_spike.fa',
-                                         utr_cov_filt = 1, min_samp_filt = 5, na_filt = 3, expr_filt = 10, old_apa_dist = F)
-
-
-
-
-
-utr_mouse_sf_st75_up <- enrich_CP(unique(subset(mouse_dapars_sf_st75$gene_res, diff & mean.diff >= -0.2)$gene_short_names), universe = unique(mouse_dapars_sf_st75$gene_res$gene_short_names), logFC = NULL, organisms = 'mouse')
-utr_mouse_sf_st75_down <- enrich_CP(unique(subset(mouse_dapars_sf_st75$gene_res, diff & mean.diff <= -0.2)$gene_short_names), universe = unique(mouse_dapars_sf_st75$gene_res$gene_short_names), logFC = NULL, organisms = 'mouse')
-utr_mouse_sf_st75_a50_down <- enrich_CP(unique(subset(mouse_dapars_sf_st75_a50$gene_res, diff & mean.diff <= -0.2)$gene_short_names), universe = unique(mouse_dapars_sf_st75_a50$gene_res$gene_short_names), logFC = NULL, organisms = 'mouse')
-utr_mouse_sf_st150_e150_v19 <- enrich_CP(unique(subset(mouse_dapars_sf_st75_a50_v22$gene_res, diff & mean.diff <= -0.2)$gene_short_names), universe = unique(mouse_dapars_sf_st75_a50_v22$gene_res$gene_short_names), logFC = NULL, organisms = 'mouse')
-utr_mouse_sf_st150_e150_down <- enrich_CP(unique(subset(mouse_dapars_sf_st150_e0$gene_res, diff & mean.diff <= -0.2)$gene_short_names), universe = unique(mouse_dapars_sf_st150_e0$gene_res$gene_short_names), logFC = NULL, organisms = 'mouse')
-
-
-
-#rat_dapars_sf_st25$gene_res[rat_dapars_sf_st25$gene_res$APA_dist <= 50,]$diff = F
+utr_mouse_sf_st25_up <- enrich_CP(unique(subset(mouse_dapars_sf_st25$gene_res,  diff & mean.diff > 0.2)$gene_short_names), universe = unique(mouse_dapars_sf_st25$gene_res$gene_short_names),organisms = 'mouse', full_combine = T)
+utr_mouse_sf_st25_down <- enrich_CP(unique(subset(mouse_dapars_sf_st25$gene_res,  diff & mean.diff < -0.2)$gene_short_names), universe = unique(mouse_dapars_sf_st25$gene_res$gene_short_names),  organisms = 'mouse', full_combine = T)
 
 
 
@@ -595,8 +571,8 @@ rat_dapars_sf_st25 <- deg_utr2('./dataset/rat_apa_res/apa2_e0_q50_st25.txt', rat
                                  utr_cov_filt = 1, min_samp_filt = -1, na_filt = 3, expr_filt = 10, old_apa_dist = F, filter_by_pas_dist = 0
 )
 
-utr_rat_sf_st25_up <- enrich_CP(unique(subset(rat_dapars_sf_st25$gene_res, diff & mean.diff >= 0.2)$gene_short_names), universe = unique(rat_dapars_sf_st25$gene_res$gene_short_names), logFC = NULL, organisms = 'rat')
-utr_rat_sf_st25_down <- enrich_CP(unique(subset(rat_dapars_sf_st25$gene_res, diff & mean.diff <= -0.2)$gene_short_names), universe = unique(rat_dapars_sf_st25$gene_res$gene_short_names), logFC = NULL, organisms = 'rat')
+utr_rat_sf_st25_up <- enrich_CP(unique(subset(rat_dapars_sf_st25$gene_res, diff & mean.diff >= 0.2)$gene_short_names), universe = unique(rat_dapars_sf_st25$gene_res$gene_short_names),  organisms = 'rat', full_combine = T)
+utr_rat_sf_st25_down <- enrich_CP(unique(subset(rat_dapars_sf_st25$gene_res, diff & mean.diff <= -0.2)$gene_short_names), universe = unique(rat_dapars_sf_st25$gene_res$gene_short_names), organisms = 'rat', full_combine = T)
 
 for(n in colnames(rat$ct$bio)){
   new_df <- cbind(rat_dapars_sf_st25$df[,grepl(paste(n, '\\.', sep = ''), colnames(rat_dapars_sf_st25$df))], rat_dapars_sf_st25$df[,1:3])
@@ -604,14 +580,6 @@ for(n in colnames(rat$ct$bio)){
   write.table(new_df, paste('apa_geo_submission/', n , '.dapars2.tsv', sep = ''), sep = '\t', quote = F, row.names = T)
 }
 
-rat_dapars_sf_st75 <- deg_utr2('./dataset/rat_apa_res/apa2_75.txt', rat$ct$bio, c('ratEgg', 'ratZygote'), 
-                               rat$meta, filter_by_PAS_motif = T, combine_p = 'simes',
-                               fasta_file = '../mouse_rat_proposal/dataset/igv/rat/rat_spike.fa',
-                               utr_cov_filt = 1, min_samp_filt = 5, na_filt = 3, expr_filt = 10, old_apa_dist = F
-)
-
-utr_rat_sf_st75_up <- enrich_CP(unique(subset(rat_dapars_sf_st75$gene_res, diff & mean.diff > 0.2)$gene_short_names), universe = unique(rat_dapars_sf_st75$gene_res$gene_short_names), logFC = NULL, organisms = 'rat')
-utr_rat_sf_st75_down <- enrich_CP(unique(subset(rat_dapars_sf_st75$gene_res, diff & mean.diff < -0.2)$gene_short_names), universe = unique(rat_dapars_sf_st75$gene_res$gene_short_names), logFC = NULL, organisms = 'rat')
 
 # Maybe include PAS Signal filter
 #mouse_PAS_dist <- post_dapars_pas_filter(mouse_dapars_sf_st25$deg, './dataset/igv/mouse/mouse_spike.fa', up_range = 80, down_range = 120, offset = 0)
@@ -645,6 +613,26 @@ ggsave('./number_of_DTU.png', width = 3.7, height = 4.2)
 
 
 
+utr_deg_mouse <- list('DEG Up'= row.names(subset(mast_mouse$mouseEgg_v_mouseZygote$DESig, fdr < 0.05 & Log2FC > log2(2))),
+                      'DEG Down'= row.names(subset(mast_mouse$mouseEgg_v_mouseZygote$DESig, fdr < 0.05 & Log2FC < -log2(2))),
+                      'Long UTR'= unique(subset(mouse_dapars_sf_st25$gene_res, mean.diff > 0.2 & fdr < 0.05)$gene_short_name),
+                      'Short UTR' =unique(subset(mouse_dapars_sf_st25$gene_res, mean.diff < -0.2 & fdr < 0.05)$gene_short_name))
+
+
+
+
+utr_deg_rat <- list('DEG Up'= row.names(subset(mast_rat$ratEgg_v_ratZygote$DESig, fdr < 0.05 & Log2FC > 1)),
+                    'DEG Down'= row.names(subset(mast_rat$ratEgg_v_ratZygote$DESig, fdr < 0.05 & Log2FC < -1)),
+                    'Long UTR'= unique(subset(rat_dapars_sf_st25$gene_res, mean.diff > 0.2 & fdr < 0.05 )$gene_short_name),
+                    'Short UTR' =unique(subset(rat_dapars_sf_st25$gene_res, mean.diff < -0.2 & fdr < 0.05)$gene_short_name))
+
+png('utr_deg_mouse.png', width = 3, height = 2.6, res = 300, units = 'in')
+UpSet(make_comb_mat(utr_deg_mouse)[1:4], comb_col = c('black', 'red', 'black','black'))
+dev.off()
+
+png('utr_deg_rat.png', width = 2.6, height = 2.6, res = 300, units = 'in')
+UpSet(make_comb_mat(utr_deg_rat)[2:4], comb_col = c('black', 'black','black'))
+dev.off()
 
 utr_v_deg <- data.frame(row.names = row.names(subset(mouse_dapars_sf_st25$gene_res, mean.diff < -0.2 & fdr < 0.05)), utr=subset(mouse_dapars_sf_st25$gene_res, mean.diff < -0.2 & fdr < 0.05)$mean.diff, 
                         deg = mast_mouse$mouseEgg_v_mouseZygote$DESig[row.names(subset(mouse_dapars_sf_st25$gene_res, mean.diff < -0.2 & fdr < 0.05)),]$Log2FC
@@ -656,8 +644,8 @@ utr_v_deg$alpha <- c('TRUE'=1, 'FALSE'=0.3)[utr_v_deg$deg_sig]
 
 
 ## Compare all genes that have DAP analysis D+PDUI change vs Log2FC, no correlation but association
-utr_v_deg2 <- data.frame(row.names = row.names(mouse_dapars_sf_st75$gene_res), utr=mouse_dapars_sf_st75$gene_res$mean.diff, 
-                        deg = mast_mouse$mouseEgg_v_mouseZygote$DESig[row.names(mouse_dapars_sf_st75$gene_res),]$Log2FC
+utr_v_deg2 <- data.frame(row.names = row.names(mouse_dapars_sf_st25$gene_res), utr=mouse_dapars_sf_st25$gene_res$mean.diff, 
+                        deg = mast_mouse$mouseEgg_v_mouseZygote$DESig[row.names(mouse_dapars_sf_st25$gene_res),]$Log2FC
 )
 
 utr_v_deg2$deg_sig <- 'Non'
@@ -725,14 +713,14 @@ ggsave('utr_v_deg_scatter.png', width = 8, height = 5)
 
 
 # GO Bp DAP mouse genes dotplot
-dotplot(clusterProfiler::simplify(utr_mouse_sf_st25_gs$GO_BP_ora, 0.7), showCategory=10, color='pvalue') +
+test_dotplot(utr_mouse_sf_st25_down$combined_full, showCategory=10, color='qvalue') +
   theme(axis.text.y = element_text(angle = 0, vjust = 0.5, hjust=0.5, size = 8, colour =rep('red', 10)), 
   axis.text.x = element_text(angle = 30, vjust = 0.5, hjust=0.5, size = 8), 
   legend.text = element_text(size=8), legend.key.size = unit(1, 'cm'),  
   legend.key.height = unit(0.3, 'cm'),legend.key.width = unit(0.3, 'cm'),
   legend.title = element_text(size=8))+ 
   xlab('Gene ratio')+
-  scale_fill_continuous(low="red", high="blue", name = 'pvalue', guide=guide_colorbar(reverse=TRUE), limits=c(0,0.002))+
+  scale_fill_continuous(low="red", high="blue", name = 'FDR', guide=guide_colorbar(reverse=TRUE), limits=c(0,0.05))+
   scale_size(range=c(3,8), limits = c(5,220))+ theme_classic()+
   theme(legend.position = c(0.99, .01),
         legend.justification = c("right", "bottom"),
@@ -752,7 +740,7 @@ ggsave('Mouse_dap_GOBP.png', width = 5, height = 6)
 test_vp <- plot_utr_coverage('Btg4', utr_res = mouse_dapars_sf_st25$gene_res, mouse_gtf, c('./dataset/mouse_apa_res/MF.sf.bw', './dataset/mouse_apa_res/MU.sf.bw'), cols= c(DOT_COLOR['mouseZygote'], DOT_COLOR['mouseEgg']),cell_names = c('Mouse zygote', 'Mouse oocyte'), file_name_suffix = 'mouse')
 test_vp <- plot_utr_coverage('Cnot7', utr_res = mouse_dapars_sf_st25$gene_res, mouse_gtf, c('./dataset/mouse_apa_res/MF.sf.bw', './dataset/mouse_apa_res/MU.sf.bw'), cols= c(DOT_COLOR['mouseZygote'], DOT_COLOR['mouseEgg']),cell_names = c('Mouse zygote', 'Mouse oocyte'), file_name_suffix = 'mouse')
 test_vp <- plot_utr_coverage('Nek7', utr_res = mouse_dapars_sf_st25$gene_res, mouse_gtf, c('./dataset/mouse_apa_res/MF.sf.bw', './dataset/mouse_apa_res/MU.sf.bw'), cols= c(DOT_COLOR['mouseZygote'], DOT_COLOR['mouseEgg']),cell_names = c('Mouse zygote', 'Mouse oocyte'), file_name_suffix = 'mouse')
-test_vp <- plot_utr_coverage('Cdc25a', utr_res = rat_dapars_sf_st25$gene_res, rat_gtf, c('./dataset/rat_apa_res/RF.sf.bw', './dataset/rat_apa_res/RU.sf.bw'), cols= c(DOT_COLOR['ratZygote'], DOT_COLOR['ratEgg']),cell_names = c('Rat zygote', 'Rat oocyte'), file_name_suffix = 'rat')
+test_vp <- plot_utr_coverage('Dazl', utr_res = rat_dapars_sf_st25$gene_res, rat_gtf, c('./dataset/rat_apa_res/RF.sf.bw', './dataset/rat_apa_res/RU.sf.bw'), cols= c(DOT_COLOR['ratZygote'], DOT_COLOR['ratEgg']),cell_names = c('Rat zygote', 'Rat oocyte'), file_name_suffix = 'rat')
 test_vp <- plot_utr_coverage('Mastl', utr_res = rat_dapars_sf_st25$gene_res, rat_gtf, c('./dataset/rat_apa_res/RF.sf.bw', './dataset/rat_apa_res/RU.sf.bw'), cols= c(DOT_COLOR['ratZygote'], DOT_COLOR['ratEgg']),cell_names = c('Rat zygote', 'Rat oocyte'), file_name_suffix = 'rat')
 test_vp <- plot_utr_coverage('Cnot6l', utr_res = rat_dapars_sf_st25$gene_res, rat_gtf, c('./dataset/rat_apa_res/RF.sf.bw', './dataset/rat_apa_res/RU.sf.bw'), cols= c(DOT_COLOR['ratZygote'], DOT_COLOR['ratEgg']),cell_names = c('Rat zygote', 'Rat oocyte'), file_name_suffix = 'rat', loci = 'NC_051349.1:13495326-13502511')
 
@@ -772,23 +760,99 @@ test_vp <- plot_utr_coverage('Usp28', utr_res = rat_dapars_sf_st25$gene_res, rat
 test_vp <- plot_utr_coverage('Bmi1', utr_res = rat_dapars_sf_st25$gene_res, rat_gtf, c('./dataset/rat_apa_res/RF.sf.bw', './dataset/rat_apa_res/RU.sf.bw'), cols= c(DOT_COLOR['ratZygote'], DOT_COLOR['ratEgg']),cell_names = c('Rat zygote', 'Rat oocyte'), file_name_suffix = 'rat')
 
 test_vp <- plot_utr_coverage('Arid1a', utr_res = rat_dapars_sf_st25$gene_res, rat_gtf, c('./dataset/rat_apa_res/RF.sf.bw', './dataset/rat_apa_res/RU.sf.bw'), cols= c(DOT_COLOR['ratZygote'], DOT_COLOR['ratEgg']),cell_names = c('Rat zygote', 'Rat oocyte'), file_name_suffix = 'rat')
-test_vp <- plot_utr_coverage('Anapc1', utr_res = rat_dapars_sf_st25$gene_res, rat_gtf, c('./dataset/rat_apa_res/RF.sf.bw', './dataset/rat_apa_res/RU.sf.bw'), cols= c(DOT_COLOR['ratZygote'], DOT_COLOR['ratEgg']),cell_names = c('Rat zygote', 'Rat oocyte'), file_name_suffix = 'rat')
+test_vp <- plot_utr_coverage('Cdc40', utr_res = rat_dapars_sf_st25$gene_res, rat_gtf, c('./dataset/rat_apa_res/RF.sf.bw', './dataset/rat_apa_res/RU.sf.bw'), cols= c(DOT_COLOR['ratZygote'], DOT_COLOR['ratEgg']),cell_names = c('Rat zygote', 'Rat oocyte'), file_name_suffix = 'rat')
+test_vp <- plot_utr_coverage('Cdc40', utr_res = mouse_dapars_sf_st25$gene_res, mouse_gtf, c('./dataset/mouse_apa_res/MF.sf.bw', './dataset/mouse_apa_res/MU.sf.bw'), cols= c(DOT_COLOR['mouseZygote'], DOT_COLOR['mouseEgg']),cell_names = c('Mouse zygote', 'Mouse oocyte'), file_name_suffix = 'mouse')
 
 
 
 
 ## Orthology
-utr_ortho <- list('Rat Long UTR'= row.names(subset(rat_dapars_sf_st75$gene_res, mean.diff > 0.2 & fdr < 0.05)),
-                  'Rat Short UTR' =row.names(subset(rat_dapars_sf_st75$gene_res, mean.diff < -0.2 & fdr < 0.05)),
-                  'Mouse Long UTR'= row.names(subset(mouse_dapars_sf_st75$gene_res, mean.diff > 0.2 & fdr < 0.05)),
-                  'Mouse Short UTR' =row.names(subset(mouse_dapars_sf_st75$gene_res,mean.diff < -0.2 & fdr < 0.05)))
 
-utr_ortho <- list('Rat Long UTR'= unique(subset(rat_PAS_dist$PAS_motif, mean.diff > 0.2 & fdr < 0.05 & num_motif > 0)$gene_short_name),
-                  'Rat Short UTR' =unique(subset(rat_PAS_dist$PAS_motif, mean.diff < -0.2 & fdr < 0.05 & num_motif > 0)$gene_short_name),
-                  'Mouse Long UTR'= unique(subset(mouse_PAS_dist$PAS_motif, mean.diff > 0.2 & fdr < 0.05 & num_motif > 0)$gene_short_name),
-                  'Mouse Short UTR' =unique(subset(mouse_PAS_dist$PAS_motif, mean.diff < -0.2 & fdr < 0.05 & num_motif > 0)$gene_short_name))
 
-unique(subset(mouse_PAS_dist$PAS_motif, mean.diff < -0.2 & fdr < 0.05 & num_motif > 0)$gene_short_name)
+
+deg_ortho <- list('Rat Up DEG'= row.names(subset(mast_rat$ratEgg_v_ratZygote$DESig, Log2FC > log2(1.25) & fdr < 0.05)),
+                  'Rat Down DEG' =row.names(subset(mast_rat$ratEgg_v_ratZygote$DESig, Log2FC < -log2(1.25)  & fdr < 0.05)),
+                  'Mouse Up DEG'= row.names(subset(mast_mouse$mouseEgg_v_mouseZygote$DESig, Log2FC > log2(1.25) & fdr < 0.05)),
+                  'Mouse Down DEG' =row.names(subset(mast_mouse$mouseEgg_v_mouseZygote$DESig, Log2FC < -log2(1.25)  & fdr < 0.05)))
+
+mu_ru <- intersect(row.names(subset(mast_rat$ratEgg_v_ratZygote$DESig, Log2FC > log2(1.25) & fdr < 0.05)), row.names(subset(mast_mouse$mouseEgg_v_mouseZygote$DESig, Log2FC > log2(1.25) & fdr < 0.05)))
+md_ru <- intersect(row.names(subset(mast_rat$ratEgg_v_ratZygote$DESig, Log2FC > log2(1.25) & fdr < 0.05)), row.names(subset(mast_mouse$mouseEgg_v_mouseZygote$DESig, Log2FC < -log2(1.25) & fdr < 0.05)))
+mu_rd <- intersect(row.names(subset(mast_rat$ratEgg_v_ratZygote$DESig, Log2FC < -log2(1.25) & fdr < 0.05)), row.names(subset(mast_mouse$mouseEgg_v_mouseZygote$DESig, Log2FC > log2(1.25) & fdr < 0.05)))
+md_rd <- intersect(row.names(subset(mast_rat$ratEgg_v_ratZygote$DESig, Log2FC < -log2(1.25) & fdr < 0.05)), row.names(subset(mast_mouse$mouseEgg_v_mouseZygote$DESig, Log2FC < -log2(1.25) & fdr < 0.05)))
+m_r <- intersect(row.names(subset(mast_rat$ratEgg_v_ratZygote$DESig, abs(Log2FC) > log2(1.25) & fdr < 0.05)), row.names(subset(mast_mouse$mouseEgg_v_mouseZygote$DESig, abs(Log2FC) > log2(1.25) & fdr < 0.05)))
+
+m_r_state <- c(rep('Mouse Up / Rat Up', length(mu_ru)),rep('Mouse down / Rat Up', length(md_ru)),rep('Mouse up / Rat down', length(mu_rd)),rep('Mouse down / Rat down', length(md_rd)))
+
+names(m_r_state) <- c(mu_ru, md_ru,mu_rd,md_rd)
+
+mouse_rat_all_deg <- intersect(row.names(mast_rat$ratEgg_v_ratZygote$DESig), row.names(mast_mouse$mouseEgg_v_mouseZygote$DESig))
+
+deg_ortho_ora <- list('mu_ru' = enrich_CP(mu_ru,universe = mouse_rat_all_deg, organisms = 'mouse'),
+                      'mu_rd' = enrich_CP(mu_rd,universe = mouse_rat_all_deg,  organisms = 'mouse'),
+                      'md_ru' = enrich_CP(md_ru,universe = mouse_rat_all_deg, organisms = 'mouse'),
+                      'md_rd'= enrich_CP(md_rd,universe = mouse_rat_all_deg,  organisms = 'mouse'),
+                      'm_r'= enrich_CP(m_r,universe = mouse_rat_all_deg,  organisms = 'mouse')
+                      )
+
+m_r_ora <- enrich_CP(m_r,universe = mouse_rat_all_deg,organisms = 'mouse')
+m_r_ora$combined <- m_r_ora$GO_BP_ora
+m_r_ora$combined@result <- rbind(m_r_ora$GO_BP_ora@result, m_r_ora$WKP_ora@result,  m_r_ora$REACT_ora@result)
+m_r_ora$combined@geneSets <- c(m_r_ora$GO_BP_ora@geneSets, m_r_ora$REACT_ora@geneSets,m_r_ora$KEGG_ora@geneSets, m_r_ora$WKP_ora@geneSets)
+m_r_ora_cnetplots <- custom_cnet_plot(m_r_ora$combined_full, top_n_cat = 13, seed = 12345,
+                                      category = c('R-MMU-1428517', 'GO:0006338', 'R-MMU-72172', 
+                                                   'R-MMU-72202', 'GO:0044772', 'GO:0006364',
+                                                   'GO:0008380', 'GO:0016574', 'R-MMU-157118',
+                                                   'R-MMU-4551638', 'GO:0006413', 'R-MMU-2990846', 
+                                                   'R-MMU-927802'),
+                                      gene_color = sapply(mast_rat$ratEgg_v_ratZygote$DESig$features, FUN = function(x){mast_rat$ratEgg_v_ratZygote$DESig[x,'Log2FC']}), 
+                                      gene_color2 = sapply(mast_mouse$mouseEgg_v_mouseZygote$DESig$features, FUN = function(x){mast_mouse$mouseEgg_v_mouseZygote$DESig[x,'Log2FC']}), 
+                                      layout = 'fr', color_cat_pval = T)
+
+ggsave(plot = m_r_ora_cnetplots$plot2+ theme(legend.position = c(0.85,0.7),legend.box = "horizontal"), 'm_r_ora_mouse.png', width = 6, height = 3)
+ggsave(plot = m_r_ora_cnetplots$plot1+ theme(legend.position = 'none'), 'm_r_ora_rat.png', width = 6, height = 3)
+
+
+
+png('deg_ortho.png', width = 3.6, height = 2.6, res = 300, units = 'in')
+UpSet(make_comb_mat(deg_ortho)[1:4], comb_col = c('black'))
+dev.off()
+
+
+
+
+
+dnp_ortho <- list('Mouse Increase DNP'= row.names(subset(mouse_intron_prop, prop_diff > 0 & qvalue < 0.05)),
+                  'Mouse Decrease DNP' =row.names(subset(mouse_intron_prop, prop_diff < 0 & qvalue < 0.05)),
+                  'Rat Increase DNP'= row.names(subset(rat_intron_prop, prop_diff > 0 & qvalue < 0.05)),
+                  'Rat Decrease DNP' =row.names(subset(rat_intron_prop, prop_diff < 0 & qvalue < 0.05)))
+png('dnp_ortho.png', width = 3.6, height = 2.6, res = 300, units = 'in')
+UpSet(make_comb_mat(dnp_ortho)[1:3], comb_col = c('black'))
+dev.off()
+
+dtu_ortho <- list( 'Rat DTU'= unique(subset(dexseq_rat_stageR, gene < 0.05)$geneID),
+                   'Mouse DTU'= unique(subset(dexseq_mouse_stageR, gene < 0.05)$geneID))
+
+dtu_ortho_ora <- enrich_CP(intersect(unique(subset(dexseq_rat_stageR, gene < 0.05)$geneID), unique(subset(dexseq_mouse_stageR, gene < 0.05)$geneID)), 
+                           universe = intersect(dexseq_rat_stageR$geneID, dexseq_mouse_stageR$geneID), organisms = 'mouse')
+
+png('dtu_ortho.png', width = 2.6, height = 2.6, res = 300, units = 'in')
+
+ggvenn(
+  dtu_ortho, 
+  fill_color = c("#0073C2FF", "#EFC000FF"),
+  stroke_size = 0.5, set_name_size = 0, text_size = 5, show_percentage = F, auto_scale = T
+)
+
+dev.off()
+
+
+
+
+utr_ortho <- list('Rat Long UTR'= row.names(subset(rat_dapars_sf_st25$gene_res, mean.diff > 0.2 & fdr < 0.05)),
+                  'Rat Short UTR' =row.names(subset(rat_dapars_sf_st25$gene_res, mean.diff < -0.2 & fdr < 0.05)),
+                  'Mouse Long UTR'= row.names(subset(mouse_dapars_sf_st25$gene_res, mean.diff > 0.2 & fdr < 0.05)),
+                  'Mouse Short UTR' =row.names(subset(mouse_dapars_sf_st25$gene_res,mean.diff < -0.2 & fdr < 0.05)))
+
 
 png('utr_ortho.png', width = 3.6, height = 2.6, res = 300, units = 'in')
 UpSet(make_comb_mat(utr_ortho)[1:4], comb_col = c('black'))
