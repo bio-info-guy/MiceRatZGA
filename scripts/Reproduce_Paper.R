@@ -1,4 +1,5 @@
 source('./scripts/Reproduce_functions.R')
+source('./scripts/Misc.R')
 # read in functions
 mouse_gtf <- makeTxDbFromGFF('./dataset/mouse_spike.gtf', 'gtf')
 rat_gtf <- makeTxDbFromGFF('./dataset/rat_spike.gtf', 'gtf')
@@ -82,29 +83,19 @@ ggsave('./rat_umap.png',plot = rat_umap, height = 2.5, width = 2.5)
 
 # DGE with MAST
 mast_mouse <- mast_diff(mouse, plot = T, tpm = F, nbins = 0, freq = 0.1,  min_cell_grp = 2, min_cell = 5, include_filt_as_NA = F, correct_wild_coef = T)
-mast_gse_mouse <- gse_CP('mouse', n_type = 'ALIAS', logFC = sapply(row.names(mast_mouse$mouseEgg_v_mouseZygote$DESig), FUN =function(x){mast_mouse$mouseEgg_v_mouseZygote$DESig[x,'Log2FC']}), simple_combine = T, full_combine = T)
-mast_ora_mouse_up <- enrich_CP(row.names(subset(mast_mouse$mouseEgg_v_mouseZygote$DESig, fdr < 0.05 & Log2FC > 1)), 'mouse', universe = row.names(mast_mouse$mouseEgg_v_mouseZygote$DESig), n_type = 'ALIAS', combine = T, full_combine = T)
-mast_ora_mouse_down <- enrich_CP(row.names(subset(mast_mouse$mouseEgg_v_mouseZygote$DESig, fdr < 0.05 & Log2FC < -1)), 'mouse', universe = row.names(mast_mouse$mouseEgg_v_mouseZygote$DESig), n_type = 'ALIAS', combine = T, full_combine = T)
+mast_gse_mouse <- gse_CP('mouse', n_type = 'ALIAS', logFC = sapply(row.names(mast_mouse$mouseEgg_v_mouseZygote$DESig), FUN =function(x){mast_mouse$mouseEgg_v_mouseZygote$DESig[x,'Log2FC']}), full_combine = T)
+mast_ora_mouse_up <- enrich_CP(row.names(subset(mast_mouse$mouseEgg_v_mouseZygote$DESig, fdr < 0.05 & Log2FC > 1)), 'mouse', universe = row.names(mast_mouse$mouseEgg_v_mouseZygote$DESig), n_type = 'ALIAS', full_combine = T)
+mast_ora_mouse_down <- enrich_CP(row.names(subset(mast_mouse$mouseEgg_v_mouseZygote$DESig, fdr < 0.05 & Log2FC < -1)), 'mouse', universe = row.names(mast_mouse$mouseEgg_v_mouseZygote$DESig), n_type = 'ALIAS', full_combine = T)
 
 
 mast_rat <- mast_diff(obj = rat, control = 'ratEgg',  plot = T ,tpm = F, nbins = 0, freq = 0.1, min_cell_grp = 2, min_cell = 5, include_filt_as_NA = F, correct_wild_coef = T)
-mast_gse_rat <- gse_CP(logFC = sapply(row.names(mast_rat$ratEgg_v_ratZygote$DESig), FUN =function(x){mast_rat$ratEgg_v_ratZygote$DESig[x,'Log2FC']}), organisms = 'rat',n_type = 'ALIAS', combine = T, simple_combine = T, full_combine = T)
-mast_ora_rat_up <- enrich_CP(row.names(subset(mast_rat$ratEgg_v_ratZygote$DESig, fdr < 0.05 & Log2FC > 1)), 'rat', universe = row.names(mast_rat$ratEgg_v_ratZygote$DESig), n_type = 'ALIAS', combine = T, full_combine = T)
-mast_ora_rat_down <- enrich_CP(row.names(subset(mast_rat$ratEgg_v_ratZygote$DESig, fdr < 0.05 & Log2FC < -1)), 'rat', universe = row.names(mast_rat$ratEgg_v_ratZygote$DESig), n_type = 'ALIAS', combine = T, full_combine = T)
+mast_gse_rat <- gse_CP(logFC = sapply(row.names(mast_rat$ratEgg_v_ratZygote$DESig), FUN =function(x){mast_rat$ratEgg_v_ratZygote$DESig[x,'Log2FC']}), organisms = 'rat',n_type = 'ALIAS',  full_combine = T)
+mast_ora_rat_up <- enrich_CP(row.names(subset(mast_rat$ratEgg_v_ratZygote$DESig, fdr < 0.05 & Log2FC > 1)), 'rat', universe = row.names(mast_rat$ratEgg_v_ratZygote$DESig), n_type = 'ALIAS', full_combine = T)
+mast_ora_rat_down <- enrich_CP(row.names(subset(mast_rat$ratEgg_v_ratZygote$DESig, fdr < 0.05 & Log2FC < -1)), 'rat', universe = row.names(mast_rat$ratEgg_v_ratZygote$DESig), n_type = 'ALIAS',  full_combine = T)
 
 # plot ridge plots
-custom_ridgeplot(mast_gse_mouse$combined_full, terms = c('R-MMU-3247509', 'GO:0002181', 'R-MMU-927802','GO:0006090',
-                                              'GO:0050684', 'GO:0016441','R-MMU-72312',
-                                              'R-MMU-111933','GO:0042448','R-MMU-1428517',
-                                              'WP403', 'GO:0043547', 'GO:0043405','GO:0060070',
-                                              'GO:0061614','GO:0007565','GO:0038061','WP265','R-MMU-75953',
-                                              'WP113','GO:0051017','R-MMU-69620', 'GO:0140013', 
-                                              'GO:0051028', 'R-MMU-453276', "R-MMU-194441",
-                                              "R-MMU-2980766","R-MMU-5693532","GO:0006086","R-MMU-69306"), top_n = 0)+
-  theme(axis.text.y = element_text(face="bold", color="black", size=8), plot.title = element_text(hjust = 1, size = 12))+
-  ggtitle('Mouse')+scale_fill_viridis_c()+geom_vline(xintercept=0, linetype="dashed", color = "red")
 
-tree_ridge_test <- cp_tree_ridge_plot(mast_gse_mouse$combined_full, alpha = 0.05, geneSet = c('R-MMU-3247509', 'GO:0002181', 'R-MMU-927802','GO:0006090',
+tree_ridge_mouse <- cp_tree_ridge_plot(mast_gse_mouse$combined_full, alpha = 0.05, geneSet = c('R-MMU-3247509', 'GO:0002181', 'R-MMU-927802','GO:0006090',
                                                                                    'GO:0050684', 'GO:0016441','R-MMU-72312',
                                                                                    'R-MMU-111933','GO:0042448','R-MMU-1428517',
                                                                                    'WP403', 'GO:0043547', 'GO:0043405','GO:0060070',
@@ -112,13 +103,11 @@ tree_ridge_test <- cp_tree_ridge_plot(mast_gse_mouse$combined_full, alpha = 0.05
                                                                                    'WP113','GO:0051017','R-MMU-69620', 'GO:0140013', 
                                                                                    'GO:0051028', 'R-MMU-453276', "R-MMU-194441",
                                                                                    "R-MMU-2980766","R-MMU-5693532","GO:0006086","R-MMU-69306"))
-print(tree_ridge_test$both) & theme(legend.position='bottom', legend.text = element_text(angle = 20), legend.title.position = 'top')
+print(tree_ridge_mouse$both) & theme(legend.position='bottom', legend.text = element_text(angle = 20), legend.title.position = 'top')
 ggsave( './mouse_gsea_ridge.png', height = 9, width =6, units = 'in')
 
-#custom_ridgeplot(mast_gse_rat$combined,  top_n = 10)+theme(plot.title = element_text(hjust = 1, size = 12), axis.text.y = element_text(face="bold", color="black", size=8))+ggtitle('GSEA of Rat DEGs')
-
-tree_ridge_test_rat <- cp_tree_ridge_plot(mast_gse_rat$combined_full, alpha = 0.05, nclust = 5)
-print(tree_ridge_test_rat$both) & theme(legend.position='bottom', legend.text = element_text(angle = 20), legend.title.position = 'top')
+tree_ridge_rat <- cp_tree_ridge_plot(mast_gse_rat$combined_full, alpha = 0.05, nclust = 5)
+print(tree_ridge_rat$both) & theme(legend.position='bottom', legend.text = element_text(angle = 20), legend.title.position = 'top')
 ggsave('./rat_gsea_ridge.png', height = 9, width =4, units = 'in')
 
 volcano_plot(mast_mouse$mouseEgg_v_mouseZygote$DESig, pval_col = 'fdr',fc = log2(2), top_genes = c('Nup37', 'Nup54', 'Obox1', 'Obox2', 'Obox5', 'Obox7', 'Nup35', 'Rpl9', 
@@ -143,10 +132,10 @@ rat_deg_down <- row.names(subset(rat_deg, Log2FC < -log2(2) & fdr < 0.05))
 deg_summary <- data.frame(Species =  c(rep("Mouse" , 2) , rep("Rat" , 2)),
                           deg = rep(c('> 1' , '< -1'), 2),
                           value = c(length(mouse_deg_up), length(mouse_deg_down), length(rat_deg_up), length(rat_deg_down)))
-ggplot(deg_summary, aes(fill=deg, y=value, x=Species, label = value)) + 
+deg_summary_plot <- ggplot(deg_summary, aes(fill=deg, y=value, x=Species, label = value)) + 
   geom_bar(position="stack", stat="identity") +
   theme_classic() +
-  theme(legend.position = c(.98, .95),
+  theme(legend.position.inside = c(.98, .95),
         legend.justification = c("right", "top"),
         legend.box.just = "right",
         legend.text=element_text(size=12),
@@ -159,7 +148,7 @@ ggplot(deg_summary, aes(fill=deg, y=value, x=Species, label = value)) +
   geom_text(size = 4, position = position_stack(vjust = 0.5)) + 
   scale_y_continuous(name="Number of DEGs", labels = scales::label_number(scale_cut = scales::cut_short_scale()))+scale_fill_manual(values = c('#6EE2FF', '#FF410D'))
 
-ggsave('./number_of_DEGs.png', width = 2.5, height = 3.5)
+ggsave('./number_of_DEGs.png', plot = deg_summary_plot, width = 2.5, height = 3.5)
 
 
 
@@ -191,7 +180,7 @@ for(n in colnames(rat_intron$spliced_raw)){
 nascent_summary <- data.frame(Species =  c(rep("Mouse" , 2) , rep("Rat" , 2)),
                           deg = rep(c('w Nascent reads' , 'wo Nascent reads'), 2),
                           value = c(length(mouse_intron$genes), sum(rowSums(mouse$ct$bio > 0) > 0)-length(mouse_intron$genes), length(rat_intron$genes), sum(rowSums(rat$ct$bio > 0) > 0)-length(rat_intron$genes)))
-ggplot(nascent_summary, aes(fill=deg, y=value, x=Species, label = value)) + 
+nascent_summary_plot <- ggplot(nascent_summary, aes(fill=deg, y=value, x=Species, label = value)) + 
   geom_bar(position="stack", stat="identity")+theme_classic()+
   theme(legend.position="bottom",legend.direction="vertical",
         legend.text=element_text(size=10),
@@ -204,7 +193,7 @@ ggplot(nascent_summary, aes(fill=deg, y=value, x=Species, label = value)) +
   geom_text(size = 4, position = position_stack(vjust = 0.5))+ 
   scale_y_continuous(name="Number of genes", labels = label_number(scale_cut = cut_short_scale()))+scale_fill_manual(values = c('#6EE2FF', '#FF410D'))
 
-ggsave('./number_of_NascentGenes.png', width = 2.5, height = 4)
+ggsave('./number_of_NascentGenes.png', plot = nascent_summary_plot, width = 2.5, height = 4)
 
 
 
@@ -237,7 +226,7 @@ mouse_rat_nascent_df <- data.frame(percentages = c(perc_mouse_genes_unspliced*10
 
 
 
-mouse_rat_nascent_df %>% reshape2::melt(c('cellType', 'organism', 'tissue'))   %>% ggbarplot( x = 'tissue', y = "value", color = "cellType",fill='cellType', facet.by = 'organism', add.params = list(color = '#ffa500'), 
+nascent_perc_plot <- mouse_rat_nascent_df %>% reshape2::melt(c('cellType', 'organism', 'tissue'))   %>% ggbarplot( x = 'tissue', y = "value", color = "cellType",fill='cellType', facet.by = 'organism', add.params = list(color = '#ffa500'), 
                                                                     palette = DOT_COLOR, add = "mean_se",position = position_dodge(0.8))+
   stat_compare_means( method = 'wilcox.test', label = "p.signif", label.y.npc = c(0.8, 0.8), label.x.npc = c(0.05, 0.4), size = 9)+
   xlab('Cell Type')+ylab('Perctange of Nascent Reads (%)')+theme_classic2(base_size = 15)+ 
@@ -245,7 +234,7 @@ mouse_rat_nascent_df %>% reshape2::melt(c('cellType', 'organism', 'tissue'))   %
         axis.text.x = element_text(size = 14, color = 'black'),
         strip.text.x = element_text(size = 16, colour = "black"),
         axis.text.y = element_text(size = 14, color = 'black'))+scale_y_continuous(name="Perctange of Nascent Reads (%)", labels = label_number(scale_cut = cut_short_scale()))
-ggsave('percent_gene_unspliced.png', width = 4,height = 3.5)
+ggsave('percent_gene_unspliced.png', plot = nascent_perc_plot, width = 4,height = 3.5)
 
 
 
@@ -257,7 +246,7 @@ rat_intergenic1 <- read_htseq_intergenic('./dataset/output_rat/rat_intergenic_10
 mouse_rat_int_df <- rbind(rat_intergenic1$small_df, mouse_intergenic1$small_df)[c(colnames(rat_intron$spliced), colnames(mouse_intron$spliced)),]
 mouse_rat_int_df$organism <- c(rep('Rat', 25), rep('Mouse', 28))
 colnames(mouse_rat_int_df)[c(1,2)] <- c('> 10Kb from Gene', 'All Regions')
-mouse_rat_int_df %>% melt(c('cellType', 'organism')) %>% ggbarplot( x = "variable", y = "value", color = "cellType",fill='cellType', facet.by = 'organism', add.params = list(color = '#ffa500'), 
+intergenic_perc_plot <- mouse_rat_int_df %>% melt(c('cellType', 'organism')) %>% ggbarplot( x = "variable", y = "value", color = "cellType",fill='cellType', facet.by = 'organism', add.params = list(color = '#ffa500'), 
                                                                     palette = DOT_COLOR, add = "mean_se",position = position_dodge(0.8))+
   stat_compare_means(aes(group = cellType), method = 'wilcox.test', label = "p.signif", label.y.npc = c(0.6, 0.6, 0.6 ,0.6), size = 9)+
   xlab('Intergenic Location')+ylab('Number of Intergenic Regions w Coverage')+theme_classic2(base_size = 15)+ 
@@ -265,17 +254,17 @@ mouse_rat_int_df %>% melt(c('cellType', 'organism')) %>% ggbarplot( x = "variabl
         strip.text.x = element_text(size = 16, colour = "black"),
         axis.text.y = element_text(size = 14, color = 'black'))+
   scale_y_continuous(name="No. Regions w Coverage", labels = label_number(scale_cut = cut_short_scale()))
-ggsave('intergenic_regions.png', width = 4,height = 3.5)
+ggsave('intergenic_regions.png', plot=intergenic_perc_plot, width = 4,height = 3.5)
 
 mouse_unsplic_mast <- mast_diff(ct = mouse_intron$unspliced[mouse_intron$genes,], meta = mouse$meta[colnames(mouse_intron$unspliced),], normFactor = colMeans(mouse_intron$spliced/edgeR::cpm(mouse_intron$spliced), na.rm = T),control = 'mouseEgg', tpm = F, nbins = 0, min_per_bin = 50, freq = 0.1, min_cell_grp = 2, min_cell = 5, max_thres = 6, plot = T)[[1]]$DESig
-mouse_unsplic_mast_ora_up <- enrich_CP(row.names(subset(mouse_unsplic_mast, fdr < 0.05 & Log2FC > 1)), 'mouse', universe = mouse_unsplic_mast$features, n_type = 'ALIAS', combine = T, full_combine = T)
-mouse_unsplic_mast_ora_down <- enrich_CP(row.names(subset(mouse_unsplic_mast, fdr < 0.05 & Log2FC < -1)), 'mouse', universe = mouse_unsplic_mast$features, n_type = 'ALIAS', combine = T, full_combine = T)
-mouse_unsplic_mast_gsea <- gse_CP( logFC = sapply(row.names(mouse_unsplic_mast), FUN =function(x){mouse_unsplic_mast[x,'Log2FC']}), organisms = 'mouse', n_type = 'ALIAS')
+mouse_unsplic_mast_ora_up <- enrich_CP(row.names(subset(mouse_unsplic_mast, fdr < 0.05 & Log2FC > 1)), 'mouse', universe = mouse_unsplic_mast$features, n_type = 'ALIAS', full_combine = T)
+mouse_unsplic_mast_ora_down <- enrich_CP(row.names(subset(mouse_unsplic_mast, fdr < 0.05 & Log2FC < -1)), 'mouse', universe = mouse_unsplic_mast$features, n_type = 'ALIAS',  full_combine = T)
+mouse_unsplic_mast_gsea <- gse_CP( logFC = sapply(row.names(mouse_unsplic_mast), FUN =function(x){mouse_unsplic_mast[x,'Log2FC']}), organisms = 'mouse', n_type = 'ALIAS',  full_combine = T)
 
 rat_unsplic_mast <- mast_diff(ct = rat_intron$unspliced[rat_intron$genes,], meta = rat$meta[colnames(rat_intron$unspliced),], normFactor = colMeans(rat_intron$spliced/edgeR::cpm(rat_intron$spliced), na.rm = T), control = 'ratEgg', tpm = F, nbins = 0, min_per_bin = 50, freq = 0.1, min_cell_grp = 2, min_cell = 5, max_thres = 6, plot = T)[[1]]$DESig
-rat_unsplic_mast_ora_up <- enrich_CP(row.names(subset(rat_unsplic_mast, fdr < 0.05 & Log2FC > 1)), 'rat', universe = rat_unsplic_mast$features,n_type = 'ALIAS', combine = T, full_combine = T)
-rat_unsplic_mast_ora_down <- enrich_CP(row.names(subset(rat_unsplic_mast, fdr < 0.05 & Log2FC < -1)), 'rat', universe = rat_unsplic_mast$features,n_type = 'ALIAS', combine = T, full_combine = T)
-rat_unsplic_mast_gsea <- gse_CP(logFC = sapply(row.names(rat_unsplic_mast), FUN =function(x){rat_unsplic_mast[x,'Log2FC']}), organisms = 'rat', n_type = 'ALIAS', combine = T, full_combine = T)
+rat_unsplic_mast_ora_up <- enrich_CP(row.names(subset(rat_unsplic_mast, fdr < 0.05 & Log2FC > 1)), 'rat', universe = rat_unsplic_mast$features,n_type = 'ALIAS',full_combine = T)
+rat_unsplic_mast_ora_down <- enrich_CP(row.names(subset(rat_unsplic_mast, fdr < 0.05 & Log2FC < -1)), 'rat', universe = rat_unsplic_mast$features,n_type = 'ALIAS', full_combine = T)
+rat_unsplic_mast_gsea <- gse_CP(logFC = sapply(row.names(rat_unsplic_mast), FUN =function(x){rat_unsplic_mast[x,'Log2FC']}), organisms = 'rat', n_type = 'ALIAS', full_combine = T)
 
 
 mast_gse_spliced <- gse_CP(logFC = sapply(setdiff(row.names(mast_mouse$mouseEgg_v_mouseZygote$DESig), row.names(subset(mouse_unsplic_mast, fdr < 0.05))), FUN =function(x){mast_mouse$mouseEgg_v_mouseZygote$DESig[x,'Log2FC']}), organisms = 'mouse', GSE = T)
@@ -288,7 +277,7 @@ unsplic_splic_log2FC <- data.frame(x=c(mouse_unsplic_mast$Log2FC, rat_unsplic_ma
 
 
 # LogFC comparison between nascent expression and gene (mature) expression
-ggplot(data = unsplic_splic_log2FC, aes(x = x, y = y)) + 
+nascent_mature_fc_plot <- ggplot(data = unsplic_splic_log2FC, aes(x = x, y = y)) + 
   geom_point()+
   facet_wrap(~Species)+
   theme_classic()+
@@ -302,7 +291,7 @@ ggplot(data = unsplic_splic_log2FC, aes(x = x, y = y)) +
         axis.title.y = element_text(size = 16, color = 'black'),
         axis.title.x = element_text(size = 16, color = 'black'),
         strip.text.x = element_text(size = 16))
-ggsave('nascent_mature_log2FC.png', height = 3.5, width =4)
+ggsave('nascent_mature_log2FC.png', plot = nascent_mature_fc_plot, height = 3.5, width =4)
 
 
 
@@ -310,13 +299,13 @@ ggsave('nascent_mature_log2FC.png', height = 3.5, width =4)
 mouse_intron_prop <- fisher_proportion_test(mouse_intron$unspliced[mouse_intron$genes,], mouse_intron$spliced[mouse_intron$genes,], mouse$meta[colnames(mouse_intron$unspliced),]$cellType)
 rat_intron_prop <- fisher_proportion_test(rat_intron$unspliced[rat_intron$genes,], rat_intron$spliced[rat_intron$genes,], rat$meta$cellType, 'ratEgg')
 
-mouse_unsplic_prop_ora_up <- enrich_CP(row.names(subset(mouse_intron_prop, qvalue < 0.05 & prop_diff > 0)), 'mouse', universe = row.names(mouse_intron_prop), combine = T, full_combine = T, n_type = 'ALIAS')
-mouse_unsplic_prop_ora_down <- enrich_CP(row.names(subset(mouse_intron_prop, qvalue < 0.05 & prop_diff < 0)), 'mouse', universe = row.names(mouse_intron_prop), combine = T, full_combine = T, n_type = 'ALIAS')
-mouse_unsplic_prop_gsea <- gse_CP(logFC = sapply(row.names(mouse_intron_prop), FUN =function(x){mouse_intron_prop[x,'prop_diff']}), organisms = 'mouse', GSE = T)
+mouse_unsplic_prop_ora_up <- enrich_CP(row.names(subset(mouse_intron_prop, qvalue < 0.05 & prop_diff > 0)), 'mouse', universe = row.names(mouse_intron_prop),  full_combine = T, n_type = 'ALIAS')
+mouse_unsplic_prop_ora_down <- enrich_CP(row.names(subset(mouse_intron_prop, qvalue < 0.05 & prop_diff < 0)), 'mouse', universe = row.names(mouse_intron_prop), full_combine = T, n_type = 'ALIAS')
 
-rat_unsplic_prop_ora_up <- enrich_CP(row.names(subset(rat_intron_prop, qvalue < 0.05 & prop_diff > 0)), 'rat', universe = row.names(rat_intron_prop), combine = T, full_combine = T, n_type = 'ALIAS')
-rat_unsplic_prop_ora_down <- enrich_CP(row.names(subset(rat_intron_prop, qvalue < 0.05 & prop_diff > 0)), 'rat', universe = row.names(rat_intron_prop), combine = T, full_combine = T, n_type = 'ALIAS')
-rat_unsplic_prop_gsea <- gse_CP(row.names(subset(rat_intron_prop, qvalue < 0.05 & prop_diff > 0)), logFC = sapply(row.names(rat_intron_prop), FUN =function(x){rat_intron_prop[x,'prop_diff']}), organisms = 'rat', GSE = T)
+
+rat_unsplic_prop_ora_up <- enrich_CP(row.names(subset(rat_intron_prop, qvalue < 0.05 & prop_diff > 0)), 'rat', universe = row.names(rat_intron_prop), full_combine = T, n_type = 'ALIAS')
+rat_unsplic_prop_ora_down <- enrich_CP(row.names(subset(rat_intron_prop, qvalue < 0.05 & prop_diff > 0)), 'rat', universe = row.names(rat_intron_prop),  full_combine = T, n_type = 'ALIAS')
+
 
 
 # Stacked number of genes with nascent expression barplot
@@ -326,7 +315,7 @@ dnp_summary <- data.frame(Species =  c(rep("Mouse" , 2) , rep("Rat" , 2)),
                                         nrow(subset(mouse_intron_prop, qvalue < 0.05 & prop_diff < 0)), 
                                         nrow(subset(rat_intron_prop, qvalue < 0.05 & prop_diff > 0)), 
                                         nrow(subset(rat_intron_prop, qvalue < 0.05 & prop_diff < 0))))
-ggplot(dnp_summary, aes(fill=deg, y=value, x=Species, label = value)) + 
+dnp_summary_plot <- ggplot(dnp_summary, aes(fill=deg, y=value, x=Species, label = value)) + 
   geom_bar(position="stack", stat="identity")+theme_classic()+
   theme(legend.position = c(1.06, .99),
         legend.justification = c("right", "top"),
@@ -661,7 +650,6 @@ utr_v_deg2$utr_sig2 <- 'Non'
 utr_v_deg2[row.names(subset(mouse_dapars_sf_st25$gene_res, abs(mean.diff) > 0.2 & fdr < 0.05)), 'utr_sig2'] <- 'Sig DAP'
 
 
-library(cowplot)
 # code for producing combined desnity plots with different legends and color groupings
 pmain <- ggplot(utr_v_deg2, aes(x = utr, y = deg, color = deg_sig, alpha = utr_sig, size = utr_sig2)) +
   geom_point(aes(fill = utr_sig)) + theme_classic()+
@@ -857,3 +845,4 @@ utr_ortho <- list('Rat Long UTR'= row.names(subset(rat_dapars_sf_st25$gene_res, 
 png('utr_ortho.png', width = 3.6, height = 2.6, res = 300, units = 'in')
 UpSet(make_comb_mat(utr_ortho)[1:4], comb_col = c('black'))
 dev.off()
+

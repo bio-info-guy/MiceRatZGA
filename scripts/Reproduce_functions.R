@@ -558,35 +558,6 @@ sample_PCA <- function(cds,
   return(plot0)
 }
 
-makePCA_UMAP <- function(cds, cellTypes, counts = F, output_dir = "./", color_by = "cellType") {
-  umap_config <- list(n_neighbors = 15, min_dist = 0.5, metric = "pearson")
-  samples <- row.names(cds$meta[cds$meta$cellType %in% cellTypes, ])
-  meta <- cds$meta[samples, ]
-  mat <- cds$tpm$bio
-  # mat <- mat[rowSums(mat > 0) > ncol(mat)*0.1,]
-  # mat <- mat[rowMeans(mat) >= quantile(rowMeans(mat)[rowMeans(mat) > 0], 0.025) & rowMeans(mat) <= quantile(rowMeans(mat)[rowMeans(mat) > 0], 0.975), ]
-  mat <- log(mat + 1)
-  if (counts) {
-    ct <- cds$ct$bio
-    # ct <- cds$ct$bio[setdiff(row.names(cds$ct$bio), c('Gm26917', 'Lars2')),]
-    mat <- DESeq2::varianceStabilizingTransformation(as.matrix(ct))
-    # mat <- log(t(t(mat[,samples])/edgeR::calcNormFactors(mat[,samples]), )+1)
-    # mat <- log(edgeR::cpm(mat)+1)
-    # mat <- mat[rowSums(mat > 0) > ncol(mat)*0.1,]
-  }
-  plts <- list()
-  print(dim(mat))
-  # mat <- mat[rowMeans(mat) >= quantile(rowMeans(mat)[rowMeans(mat) > 0], 0.025), ]
-  sample_PCA(mat, meta, umap = T, dimension = 2, main = "UMAP of Log Expression", labeling = T, point_size = 2, color_by = color_by, umap.config = umap_config)
-  ggsave(paste(output_dir, "_uMAP_label.tiff", sep = ""), units = "in", width = 5, height = 4, dpi = 300, compression = "lzw")
-  plts[["umap"]] <- sample_PCA(mat, meta, umap = T, dimension = 2, main = "UMAP of Log Expression", labeling = T, point_size = 4, color_by = color_by, umap.config = umap_config)
-  ggsave(paste(output_dir, "_uMAP.tiff", sep = ""), units = "in", width = 5, height = 4, dpi = 300, compression = "lzw")
-  sample_PCA(mat, meta, dimension = 2, main = "PCA of Log Expression", labeling = T, point_size = 2, color_by = color_by)
-  ggsave(paste(output_dir, "_PCA_label.tiff", sep = ""), units = "in", width = 5, height = 4, dpi = 300, compression = "lzw")
-  plts[["pca"]] <- sample_PCA(mat, meta, dimension = 2, main = "PCA of Log Expression", point_size = 4, color_by = color_by)
-  ggsave(paste(output_dir, "_PCA.tiff", sep = ""), units = "in", width = 5, height = 4, dpi = 300, compression = "lzw")
-  return(plts)
-}
 
 
 options(ucscChromosomeNames = FALSE)
@@ -785,387 +756,10 @@ plot_range_coverage <- function(txdb, bw_file_list, cols, cell_names, gene_name 
 }
 
 
-addGuideLine2 <- function(guideLine, col = "gray", lty = "dashed", lwd = 1, 
-                          vp = NULL, y_lim =c(0,1)) 
-{
-  if (missing(guideLine) | !(inherits(guideLine, c("numeric", 
-                                                   "integer"))) | length(guideLine) < 1) 
-    stop("guideLine is required as a numeric vector of coordinates of genome")
-  len <- length(guideLine)
-  trimLen <- function(obj, len) {
-    if (length(obj) < len) 
-      obj <- rep(obj, len)[1:len]
-    obj
-  }
-  vpmultiple <- FALSE
-  if (length(vp) > 0) {
-    stopifnot(is(vp, "viewport"))
-    if (is(vp, "vpTree")) {
-      vpmultiple <- TRUE
-    }
-  }
-  selectVP <- function(x, tree) {
-    xscales <- sapply(tree$children, function(.ele) {
-      seekViewport(names(.ele$children))
-      current.viewport()$xscale
-    }, simplify = FALSE)
-    xscales <- do.call(cbind, xscales)
-    i <- which(x >= xscales[1, ] & x <= xscales[2, ])
-    if (length(i) < 1) {
-      message(x, " out of the range.")
-      return(NULL)
-    }
-    seekViewport(paste0("panel.", i))
-    current.viewport()
-  }
-  col <- trimLen(col, len)
-  lty <- trimLen(lty, len)
-  lwd <- trimLen(lwd, len)
-  for (i in seq_along(guideLine)) {
-    if (vpmultiple) {
-      currentVP <- selectVP(guideLine[i], vp)
-      grid.lines(x = guideLine[i], y =  y_lim , gp = gpar(col = col[i], 
-                                                          lty = 'dashed', lwd = lwd[i], alpha = 0.8), default.units = "native")
-    }
-    else {
-      currentVP <- vp
-      grid.lines(x = guideLine[i], y =  y_lim , gp = gpar(col = col[i], 
-                                                          lty = 'dashed', lwd = lwd[i], alpha = 0.8), default.units = "native", 
-                 vp = currentVP)
-    }
-  }
-  i <- 1
-  while (i < length(guideLine)) {
-    if (vpmultiple) {
-      currentVP <- selectVP(guideLine[i], vp)
-      grid.lines(x = c(guideLine[i], guideLine[i+1]), y =  y_lim[1] , gp = gpar(col = col[i], 
-                                                                                lty = lty[i], lwd = lwd[i], alpha = 0.8), default.units = "native", vp = currentVP)
-      grid.lines(x = c(guideLine[i], guideLine[i+1]), y =  y_lim[2] , gp = gpar(col = col[i], 
-                                                                                lty = lty[i], lwd = lwd[i], alpha = 0.8), default.units = "native", vp = currentVP)
-    }
-    else {
-      currentVP <- vp
-      grid.lines(x = c(guideLine[i], guideLine[i+1]), y =  y_lim[1] , gp = gpar(col = col[i], 
-                                                                                lty = 'dashed', lwd = lwd[i], alpha = 0.8), default.units = "native", vp = currentVP)
-      grid.lines(x = c(guideLine[i], guideLine[i+1]), y =  y_lim[2], gp = gpar(col = col[i], 
-                                                                               lty = 'dashed', lwd = lwd[i], alpha = 0.8), default.units = "native", vp = currentVP)
-      #grid.lines(x=c(guideLine[1], guideLine[2]), y = 0.03, gp = gpar(col = 'black', 
-      #lty = 'solid', lwd = 2, alpha = 1), default.units = "native", arrow = arrow(type = 'closed', length = unit(0.1, "inches")), vp = currentVP)
-    }
-    i <- i+2
-  }
-  
-  return(invisible())
-  
-}
 
 
-# function for importing bigwig files
-import_wig <- function(file, file2, format = c(
-                         "BED", "bedGraph", "WIG",
-                         "BigWig"
-                       ), ranges = GRanges(), ignore.strand = TRUE) {
-  if (missing(file)) {
-    stop("file is required.")
-  }
-  format <- match.arg(format)
-  if (!is(ranges, "GRanges")) {
-    stop("ranges must be an object of GRanges.")
-  }
-  gr <- trackViewer:::orderedGR(ranges)
-  seqn <- unique(as.character(seqnames(gr)))
-  filterByRange <- function(r) {
-    if (length(gr) > 0) {
-      r <- r[r[, 1] %in% seqn, , drop = FALSE]
-      nr <- nrow(r)
-      if (nr > 0) {
-        idx <- rep(FALSE, nr)
-        l <- floor(nr / 1000)
-        for (i in 0:l) {
-          f <- min(i * 1000 + 1, nr)
-          t <- min((i + 1) * 1000, nr)
-          x <- r[f:t, , drop = FALSE]
-          xgr <- GRanges(x[, 1], IRanges(start = as.numeric(x[
-            ,
-            2
-          ]), end = as.numeric(x[, 3])))
-          suppressWarnings(ol <- findOverlaps(xgr, gr,
-            ignore.strand = ignore.strand
-          ))
-          if (length(ol) > 0) {
-            idx[queryHits(ol) + i * 1000] <- TRUE
-          }
-        }
-        r <- r[idx, , drop = FALSE]
-      }
-    }
-    r
-  }
-  getWigInfo <- function(firstline) {
-    firstline <- unlist(strsplit(firstline, "\\s"))
-    firstline <- firstline[firstline != ""]
-    structure <- firstline[1]
-    firstline <- firstline[-1]
-    firstline <- do.call(rbind, strsplit(firstline, "=",
-      fixed = TRUE
-    ))
-    firstline <- firstline[match(c(
-      "chrom", "span", "start",
-      "step"
-    ), firstline[, 1]), ]
-    info <- c(structure, firstline[, 2])
-    names(info) <- c(
-      "structure", "chrom", "span", "start",
-      "step"
-    )
-    return(info)
-  }
-  readWIG <- function(buf, lastWigInfo = NULL) {
-    buf <- gsub("^\\s+", "", buf)
-    buf <- gsub("\\s+$", "", buf)
-    buf <- buf[grepl(
-      "^(variableStep|fixedStep|([0-9]+))",
-      buf
-    )]
-    infoLine <- grep("Step", buf)
-    if (length(infoLine) > 0) {
-      if (infoLine[1] != 1) {
-        if (is.null(lastWigInfo[1])) {
-          stop("WIG file must contain track definition line, \n                     which should start by variableStep or fixedStep.")
-        } else {
-          buf <- c(lastWigInfo, buf)
-          infoLine <- grep("Step", buf)
-        }
-      }
-    } else {
-      if (is.null(lastWigInfo[1])) {
-        stop("WIG file must contain track definition line, \n                     which should start by variableStep or fixedStep.")
-      } else {
-        buf <- c(lastWigInfo, buf)
-        infoLine <- grep("Step", buf)
-      }
-    }
-    lastWigInfo <- buf[infoLine[length(infoLine)]]
-    while (infoLine[length(infoLine)] == length(buf)) {
-      buf <- buf[-length(buf)]
-    }
-    block <- c(infoLine, length(buf) + 1)
-    dif <- diff(block)
-    block <- rep(infoLine, dif)
-    buf <- split(buf, block)
-    r <- lapply(buf, function(.ele) {
-      wiginfo <- getWigInfo(.ele[1])
-      span <- wiginfo["span"]
-      step <- as.numeric(wiginfo["step"])
-      if (wiginfo["structure"] == "variableStep") {
-        start <- as.numeric(strsplit(.ele[2], "\\s+")[[1]][1])
-        if (is.na(span)) {
-          span <- 1
-        }
-        lastrow <- strsplit(.ele[length(.ele)], "\\s+")[[1]]
-        end <- as.numeric(lastrow)[1] + as.numeric(span)
-      } else {
-        start <- as.numeric(wiginfo["start"])
-        if (!is.na(span)) {
-          end <- start + (length(.ele) - 1) * step +
-            as.numeric(span) - 1
-        } else {
-          end <- start + length(.ele) * step - 1
-        }
-      }
-      c(wiginfo["chrom"], start, end, span, step, wiginfo["structure"])
-    })
-    r <- do.call(rbind, r)
-    wiginfo <- getWigInfo(lastWigInfo)
-    if (wiginfo["structure"] == "fixedStep") {
-      lastWigInfo <- gsub(
-        "start=\\d+(\\s)", paste("start=",
-          as.numeric(r[nrow(r), 3]) + 1, "\\1",
-          sep = ""
-        ),
-        lastWigInfo
-      )
-    }
-    buf <- lapply(buf, "[", -1)
-    buf <- CharacterList(buf, compress = TRUE)
-    if (length(gr) > 0) {
-      r <- cbind(r, rid = 1:nrow(r))
-      r <- filterByRange(r)
-      buf <- buf[as.numeric(r[, "rid"])]
-    }
-    list(gr = GRanges(seqnames = r[, 1], ranges = IRanges(start = as.numeric(r[
-      ,
-      2
-    ]), end = as.numeric(r[, 3])), score = buf, span = as.numeric(r[
-      ,
-      4
-    ]), step = as.numeric(r[, 5]), structure = r[
-      ,
-      6
-    ]), lastWigInfo = lastWigInfo)
-  }
-  readBED <- function(buf) {
-    buf <- strsplit(buf, "\t", fixed = TRUE)
-    len <- sapply(buf, length)
-    buf <- buf[len > 2]
-    len <- len[len > 2]
-    if (length(buf) < 1) {
-      return(GRanges(score = numeric(0)))
-    }
-    maxLen <- max(len)
-    if (all(len == maxLen)) {
-      buf <- do.call(rbind, buf)
-    } else {
-      NAs <- rep("", maxLen)
-      buf <- do.call(rbind, lapply(buf, function(.ele) {
-        c(
-          .ele,
-          NAs
-        )[1:maxLen]
-      }))
-    }
-    if (ncol(buf) == 3) {
-      buf <- cbind(buf, ".")
-    }
-    if (ncol(buf) == 4) {
-      if (all(grepl("^[\\d\\.]+$", buf[, 4])) && length(unique(nchar(buf[
-        ,
-        4
-      ]))) > 1) {
-        buf <- cbind(buf, buf[, 4])
-      } else {
-        buf <- cbind(buf, 1)
-      }
-    }
-    if (ncol(buf) == 5) {
-      buf <- cbind(buf, "*")
-    }
-    buf[!buf[, 6] %in% c("+", "-"), 6] <- "*"
-    buf <- filterByRange(buf)
-    if (nrow(buf) > 0) {
-      GRanges(seqnames = buf[, 1], ranges = IRanges(start = as.numeric(buf[
-        ,
-        2
-      ]) + 1, end = as.numeric(buf[, 3])), strand = buf[
-        ,
-        6
-      ], score = as.numeric(buf[, 5]))
-    } else {
-      GRanges(seqnames = buf[, 1], ranges = IRanges(start = as.numeric(buf[
-        ,
-        2
-      ]), end = as.numeric(buf[, 3])), strand = buf[
-        ,
-        6
-      ], score = as.numeric(buf[, 5]))
-    }
-  }
-  readFourCols <- function(buf) {
-    buf <- gsub("^\\s+", "", buf)
-    buf <- gsub("\\s+$", "", buf)
-    buf <- buf[!grepl("^(browser|track|#)", buf)]
-    buf <- strsplit(buf, "\t", fixed = TRUE)
-    len <- sapply(buf, length)
-    buf <- buf[len == 4]
-    if (length(buf) < 1) {
-      return(GRanges(score = numeric(0)))
-    }
-    buf <- do.call(rbind, buf)
-    buf <- filterByRange(buf)
-    if (nrow(buf) > 0) {
-      GRanges(seqnames = buf[, 1], ranges = IRanges(start = as.numeric(buf[
-        ,
-        2
-      ]) + 1, end = as.numeric(buf[, 3])), score = as.numeric(buf[
-        ,
-        4
-      ]))
-    } else {
-      GRanges(seqnames = buf[, 1], ranges = IRanges(start = as.numeric(buf[
-        ,
-        2
-      ]), end = as.numeric(buf[, 3])), score = as.numeric(buf[
-        ,
-        4
-      ]))
-    }
-  }
-  readbedGraph <- function(buf) {
-    readFourCols(buf)
-  }
-  readBigWig <- function(file) {
-    if (length(gr) > 0) {
-      import(con = file, format = "BigWig", which = gr)
-    } else {
-      import(con = file, format = "BigWig")
-    }
-  }
-  readFile <- function(file, format, FUN) {
-    if (format == "WIG") {
-      res <- NULL
-      con <- file(file, open = "r")
-      on.exit(close(con))
-      lastWigInfo <- NULL
-      while (length(buf <- readLines(con, n = 1e+06, warn = FALSE)) >
-        0) {
-        buf <- FUN(buf, lastWigInfo)
-        lastWigInfo <- buf$lastWigInfo
-        if (length(res) < 1) {
-          res <- buf$gr
-        } else {
-          suppressWarnings(res <- c(res, buf$gr))
-        }
-      }
-    } else {
-      s <- file.info(file)$size
-      if (s < 1e+08) {
-        buf <- readChar(file, s, useBytes = TRUE)
-        buf <- strsplit(buf, "\n", fixed = TRUE, useBytes = TRUE)[[1]]
-        res <- FUN(buf)
-      } else {
-        message("file is too huge. Please consider to use bedtools or bedops to subset the data.")
-        res <- NULL
-        con <- file(file, open = "r")
-        on.exit(close(con))
-        while (length(buf <- readLines(con,
-          n = 1e+06,
-          warn = FALSE
-        )) > 0) {
-          buf <- FUN(buf)
-          if (length(res) < 1) {
-            res <- buf
-          } else {
-            suppressWarnings(res <- c(res, buf))
-          }
-        }
-      }
-    }
-    res <- unique(res)
-    return(res)
-  }
-  readFiles <- function(file, format) {
-    FUN <- get(paste("read", format, sep = ""))
-    if (format == "BigWig") {
-      res <- unique(FUN(file))
-    } else {
-      res <- readFile(file, format, FUN)
-    }
-    return(res)
-  }
-  res <- readFiles(file, format)
-  if (!missing(file2)) {
-    res2 <- readFiles(file2, format)
-    return(new("track",
-      dat = trackViewer:::orderedGR(res), dat2 = trackViewer:::orderedGR(res2),
-      type = "data", format = format
-    ))
-  } else {
-    return(new("track",
-      dat = trackViewer:::orderedGR(res), type = "data",
-      format = format
-    ))
-  }
-}
+
+
 
 mast_diff <- function(obj = NULL, plot = F, ct = NULL, meta = NULL, FCThresh = log2(1.25), normFactor = NULL, control = "mouseEgg", tpm = T,
                       freq = 0.5, max_thres = 3, bin_by = "median", nbins = 20, min_per_bin = 30,
@@ -1313,7 +907,7 @@ get_organism_items <- function(organisms){
   return(list(orgdb = orgdb, orgkegg = orgabv, orgname = orgname))
 }
 
-enrich_CP <- function(ora_genes, organisms, n_type = 'ALIAS',universe = NULL, classic = T, GO_BP_only = F, enrich_all = T, Msig = NULL, alpha = 0.5, simple_combine = F, full_combine = T){
+enrich_CP <- function(ora_genes, organisms, n_type = 'ALIAS',universe = NULL, classic = T, GO_BP_only = F, enrich_all = T, Msig = NULL, alpha = 1, full_combine = T){
   
   items = get_organism_items(organisms = organisms)
   orgabv = items$orgkegg
@@ -1410,24 +1004,9 @@ enrich_CP <- function(ora_genes, organisms, n_type = 'ALIAS',universe = NULL, cl
       GSE_results[[n]] <- Msig_res[[n]]
     }
   }
-  if(simple_combine == T){
-      combined <- GSE_results[['GO_BP_ora']]
-      res_ <- c(c("WKP_ora", 'GO_BP_ora','KEGG_ora','MKEGG_ora','REACT_ora'), Msig)
-      combined@result <- do.call(rbind, lapply(res_, FUN = function(x){
-        r=GSE_results[[x]]@result
-        if(ncol(r) == 11){
-          r <- r[,3:11]
-        }
-        r
-      }))
-      row.names(combined@result) <- combined@result$ID
-      combined@geneSets <- do.call(c, lapply(res_, FUN = function(x){GSE_results[[x]]@geneSets}))
-      names(combined@geneSets) <- do.call(c, lapply(res_, FUN = function(x){names(GSE_results[[x]]@geneSets)}))
-      combined@result$old_qvalue <- combined@result$qvalue
-      combined@result$qvalue <- qvalue(combined@result$pvalue)$qvalue
-      GSE_results[['combined']] <- combined
-    }
+
   if(full_combine == T){
+    alpha = 1
       all_sets <- NULL
       all_sets_n <- NULL
       if(classic){
@@ -1486,17 +1065,9 @@ enrich_CP <- function(ora_genes, organisms, n_type = 'ALIAS',universe = NULL, cl
 
 
 
-gse_CP <- function( organisms, logFC=NULL, n_type = 'ALIAS', classic = T, simplify_go = T, combine = T, simple_combine = F, full_combine = T, Msig = NULL, alpha = 1, disease= F){
-  require(ReactomePA)
-  require(clusterProfiler)
-  require(org.Sc.sgd.db)
-  require(meshes)
-  require(dplyr)
-  if(simple_combine){
+gse_CP <- function( organisms, logFC=NULL, n_type = 'ALIAS', classic = T, simplify_go = T, full_combine = T, Msig = NULL, alpha = 1, disease= F){
+  if(full_combine){
     alpha = 1
-  }
-  if(!classic){
-    simple_combine = F
   }
   
   items = get_organism_items(organisms = organisms)
@@ -1595,23 +1166,8 @@ gse_CP <- function( organisms, logFC=NULL, n_type = 'ALIAS', classic = T, simpli
     #for(r in names(GSE_results)){
     #GSE_results[[r]]@result <- subset(GSE_results[[r]]@result, qvalue < 0.05)
     #}
-    if(combine){
-      if(simple_combine == T){
-        combined <- GSE_results[['GO_BP_gse']]
-        res_ <- c(c("WKP_gse", 'GO_BP_gse','KEGG_gse','REACT_gse'), Msig)
-        combined@result <- do.call(rbind, lapply(res_, FUN = function(x){GSE_results[[x]]@result}))
-        row.names(combined@result) <- combined@result$ID
-        combined@geneSets <- do.call(c, lapply(res_, FUN = function(x){GSE_results[[x]]@geneSets}))
-        names(combined@geneSets) <- do.call(c, lapply(res_, FUN = function(x){names(GSE_results[[x]]@geneSets)}))
-        combined@result$old_qvalue <- combined@result$qvalue
-        combined@result$qvalue <- qvalue(combined@result$pvalue)$qvalue
-        GSE_results[['combined']] <- combined
-        GSE_results[['combined_up']] <- combined
-        GSE_results[['combined_up']]@result <- subset(GSE_results[['combined_up']]@result, NES > 0)
-        GSE_results[['combined_down']] <- combined
-        GSE_results[['combined_down']]@result <- subset(GSE_results[['combined_down']]@result, NES < 0)
-      }
-      if(full_combine == T){
+
+    if(full_combine == T){
         all_sets <- NULL
         all_sets_n <- NULL
         if(classic){
@@ -1671,189 +1227,10 @@ gse_CP <- function( organisms, logFC=NULL, n_type = 'ALIAS', classic = T, simpli
       }
     }
     
-  }
-  
-  
-  
   GSE_results[['gfc0']] <- gse_list0
   GSE_results[['gfc']] <- gse_list
   
   return(GSE_results)
-}
-
-deg_utr <- function(file, ct, compare, meta, impute = F, method = 'fisher.test', combine_p = 'fisher'){
-  ##read in the new dapars file that includes long. short and PDUI values
-  dapars <- read.csv(file, sep = '\t', header = T, row.names = 1)
-  dapars_orig <- dapars
-  dapars$strand = sapply(strsplit(row.names(dapars), '\\|'), FUN = function(x){x[4]})
-  dapars$APA_dist = 0
-  dapars[dapars$strand == '+',]$APA_dist <- abs(sapply(strsplit(dapars[dapars$strand == '+',]$Loci, '-'), 
-                                                   FUN = function(x){as.numeric(strsplit(x[1], ':')[[1]][2])}) - dapars[dapars$strand == '+',]$Predicted_Proximal_APA)-1
-  dapars[dapars$strand == '-',]$APA_dist <- abs(sapply(strsplit(dapars[dapars$strand == '-',]$Loci, '-'), 
-                                                   FUN = function(x){as.numeric(x[2])}) - dapars[dapars$strand == '-',]$Predicted_Proximal_APA)-1
-  
-  ## Filter first based on coverage of the each gene's entire body
-  ## Only account for UTR coverage in genes that are assigned at least 10 uniquely mapped reads
-  
-  genes <- row.names(ct)[rowSums(ct[,row.names(subset(meta, cellType == compare[1]))] > 10) > 5]
-  genes <- intersect(genes, row.names(ct)[rowSums(ct[,row.names(subset(meta, cellType == compare[2]))] > 10) > 5])
-  dapars$gene_short_names <- sapply(row.names(dapars), FUN = function(x){strsplit(x,"\\|")[[1]][2]})
-  print(length(unique((dapars$gene_short_names))))
-  
-  
-  all_genes <- unique(dapars$gene_short_names)
-  dapars <- dapars[dapars$gene_short_names %in% genes,]
-  #dapars <- subset(dapars, fit_value >= 2) # Maybe filter also based on regression fit value
-  print(length(unique((dapars$gene_short_names))))
-  # vector to store gene name and UTR region correspondence in case gene names is lost with imputation
-  gene2region <- dapars$gene_short_names
-  names(gene2region) <- sapply(row.names(dapars), FUN = function(x){strsplit(x,"\\|")[[1]][1]})
-  
-  #split file into long, short and pdui
-  d_long <- dapars[,grepl('long_exp', colnames(dapars))]
-  d_short <- dapars[,grepl('short_exp', colnames(dapars))]
-  d_pdui <- dapars[,grepl('PDUI', colnames(dapars))]
-  
-  # change column names
-  colnames(d_long) <- sapply(strsplit(colnames(d_long), '_'), FUN = function(x){strsplit(x[1], "\\.")[[1]][1]})
-  colnames(d_short) <- sapply(strsplit(colnames(d_short), '_'), FUN = function(x){strsplit(x[1], "\\.")[[1]][1]})
-  colnames(d_pdui) <- sapply(strsplit(colnames(d_pdui), '_'), FUN = function(x){strsplit(x[1], "\\.")[[1]][1]})
-  
-  # select filtering genes based on number of passes (Non NAs) and overall coverage (average > 2 either in long or short UTR in both conditions)
-  grp <- meta[colnames(d_pdui), "cellType"]
-  btch <- meta[colnames(d_pdui), "experiment"]
-  cond1_ind <- which(grp == compare[1])
-  cond2_ind <- which(grp == compare[2])
-  
-  #print(d_pdui[dapars$gene_short_name == 'Cdk1',])
-  ## NA FILTER
-  # First filter out all genes that have at least 5 non-NAs in terms of coverage in both conditions
-  na.filt.genes <- rowSums(!is.na(d_pdui[,cond1_ind])) >= 5 & rowSums(!is.na(d_pdui[,cond2_ind])) >= 5
-  dapars <- dapars[na.filt.genes, ]
-  
-  print(length(unique((dapars$gene_short_names))))
-  
-  d_long <- d_long[na.filt.genes, ]
-  d_short <- d_short[na.filt.genes, ]
-  d_pdui <- d_pdui[na.filt.genes, ]
-  # Filter based on coverage of UTR regions
-  c1.filt.genes <- rowMeans(d_long[, cond1_ind], na.rm = T) > 1 | rowMeans(d_short[, cond1_ind], na.rm = T) > 1
-  c2.filt.genes <- rowMeans(d_long[, cond2_ind], na.rm = T) > 1 | rowMeans(d_short[, cond2_ind], na.rm = T) > 1
-  
-  #print(sum(c2.filt.genes))
-  final.filt.genes <- c1.filt.genes & c2.filt.genes 
-  #print(sum(final.filt.genes))
-  # filtering matrices with genes selected prior
-  dapars <- dapars[final.filt.genes, ]
-  d_long <- d_long[final.filt.genes, ]
-  d_short <- d_short[final.filt.genes, ]
-  d_pdui <- d_pdui[final.filt.genes, ]
-  print(length(unique((dapars$gene_short_names))))
-  #print('Cdk1' %in% dapars$gene_short_name)
-  if(impute){
-    dapars_out <- data.frame(Gene = row.names(dapars), dapars[1:3,], d_pdui)
-    write.table(dapars_out, file = './temp.dp.tsv', sep = '\t', quote = F, row.names = F)
-    d_pdui = scDaPars(raw_PDUI_file = './temp.dp.tsv',
-                      out_dir = "apa/scDaPars_result",
-                      filter_gene_thre = 0.2,
-                      filter_cell_thre = 0.1, k= 8)
-    method = 'ks.test'
-  }
-  #dapars_ratio <- dapars_ratio[rowSums(!is.na(dapars_ratio)) > 20 ,]
-  
-  #dapars_ratio[is.na(dapars_ratio)] <- 0
-  
-  #print(sum(rowSums(!is.na(dapars_ratio[,cond1_ind])) >= 10 & rowSums(!is.na(dapars_ratio[,cond2_ind])) >=10))
-  #print(sum(rowSums(!is.na(dapars_ratio)) > 20))
-  #dapars_ratio <- dapars_ratio[rowSums(!is.na(dapars_ratio[,cond1_ind])) >= 7 & rowSums(!is.na(dapars_ratio[,cond2_ind])) >=7,]
-  if(method == 'ks.test'){
-    test <- apply(d_pdui, 1, FUN = function(x){
-      if(sum(x[!is.na(x)]) == 0 | sum(!is.na(x[cond1_ind])) <= 3 | sum(!is.na(x[cond2_ind])) <= 3){
-        c(1, 0)
-      }else{
-        c(ks.test(x[cond1_ind][!is.na(x[cond1_ind])], x[cond2_ind][!is.na(x[cond2_ind])])$p.value, mean(x[cond2_ind][!is.na(x[cond2_ind])]) - mean(x[cond1_ind][!is.na(x[cond1_ind])]))
-      }
-    })
-    test <- t(test)
-  }else{
-    
-    l1 <- length(cond1_ind)
-    l2 <- length(cond2_ind)
-    d_long1 <- d_long
-    #d_long1[is.na(d_long1)] <- 0
-    d_short1 <- d_short
-    #d_short1[is.na(d_short1)] <- 0
-    utrl1_mean <- round(rowMeans(d_long1[, cond1_ind], na.rm = T))
-    utrl2_mean <- round(rowMeans(d_long1[, cond2_ind], na.rm = T))
-    utrs1_mean <- round(rowMeans(d_short1[, cond1_ind], na.rm = T))
-    utrs2_mean <- round(rowMeans(d_short1[, cond2_ind], na.rm = T))
-    pdui1_mean <- rowMeans(d_pdui[, cond1_ind], na.rm = T)
-    pdui2_mean <- rowMeans(d_pdui[, cond2_ind], na.rm = T)
-    test <- do.call(rbind, pblapply(row.names(d_long), FUN = function(x) {
-      # utr_l1 <- d_long[x,cond1_ind][!is.na(d_long[x,cond1_ind])] # long utr coverage in condition 1
-      # utr_l2 <- d_long[x,cond2_ind][!is.na(d_long[x,cond2_ind])] # short utr coverage in condition 2
-      # utr_s1 <- d_short[x,cond1_ind][!is.na(d_short[x,cond1_ind])] # long utr coverage in condition 1
-      # utr_s2 <- d_short[x,cond2_ind][!is.na(d_short[x,cond2_ind])] # short utr coverage in condition 2
-      pdui_1 <- pdui1_mean[x]#mean(d_pdui[x, cond1_ind], na.rm = T)
-      pdui_2 <- pdui2_mean[x]#mean(d_pdui[x, cond2_ind], na.rm = T)
-      # c(fisher.test(x = rbind(c(mean(utr_l1), mean(utr_s1)), c(mean(utr_l2), mean(utr_s2))))$p.value, pdui_2 - pdui_1)
-      twobytwo <- rbind(c(utrl1_mean[x], utrs1_mean[x]), c(utrl2_mean[x], utrs2_mean[x]))
-      c(fisher.test(x = twobytwo)$p.value, pdui_2 - pdui_1)
-      
-      
-      # if(x == 'XM_039113041.1|Pou2f2|NC_051336.1|-'){
-      # print(rbind(c(sum(utr_l1)/l1, sum(utr_s1)/l1), c(sum(utr_l2)/l1, sum(utr_s2)/l2)))
-      # }
-    }))
-    cat('done')
-  }
-  #print(dim(test))
-  #print(dim(d_long))
-  row.names(test) <- row.names(d_long)
-  colnames(test) <- c('pval', 'mean.diff')
-  test <- data.frame(test)
-  test$pval[test$pval > 1] = 1
-  test$padj <- p.adjust(test$pval)
-  test$fdr <- qvalue(test$pval)$qvalue
-  
-  if(impute){
-    test$gene_short_names <- gene2region[row.names(test)]
-  }else{
-    test$gene_short_names <- sapply(row.names(test), FUN = function(x){strsplit(x,"\\|")[[1]][2]})
-  }
-  test$diff <- abs(test$mean.diff) > 0.2 & test$fdr < 0.05
-  test$fit_value <- dapars[row.names(test),]$fit_value
-  test$predicted_p_APA <- dapars_orig[row.names(test),]$Predicted_Proximal_APA
-  test$loci <- dapars_orig[row.names(test),]$Loci
-  test$strand = sapply(strsplit(row.names(test), '\\|'), FUN = function(x){x[4]})
-  test$APA_dist = 0
-  test[test$strand == '+',]$APA_dist <- abs(sapply(strsplit(test[test$strand == '+',]$loci, '-'), 
-                                                   FUN = function(x){as.numeric(strsplit(x[1], ':')[[1]][2])}) - test[test$strand == '+',]$predicted_p_APA)-1
-  test[test$strand == '-',]$APA_dist <- abs(sapply(strsplit(test[test$strand == '-',]$loci, '-'), 
-                                                   FUN = function(x){as.numeric(x[2])}) - test[test$strand == '-',]$predicted_p_APA)-1
-  
-  #test$APA_dist <- abs(sapply(strsplit(test$loci, '-'), FUN = function(x){as.numeric(x[2])}) - test$predicted_p_APA)-1
-  
-  gene_res <- data.frame(do.call(rbind, tapply(row.names(test), test$gene_short_names, function(x){
-    df <- test[x,]
-    min_pval <- min(df[,'pval'])
-    min_pval_ind = which(df[,'pval'] == min_pval)
-    min_pval_ind <- min_pval_ind[which(abs(df[min_pval_ind, 'mean.diff']) == max(abs(df[min_pval_ind, 'mean.diff'])))][1]
-    if(!is.null(combine_p)){
-      df[min_pval_ind,'pval'] <- metapod::combineParallelPValues(as.list(df[,'pval']), method = combine_p)$p.value
-    }
-    return(cbind(df[min_pval_ind,], dapars[x[min_pval_ind],c(1,2,3)]))
-  })))
-  gene_res$padj <- p.adjust(gene_res$pval)
-  gene_res$fdr <- qvalue(gene_res$pval)$qvalue
-  gene_res$diff <- abs(gene_res$mean.diff) > 0.2 & gene_res$fdr < 0.05
-  print(length(unique((test$gene_short_names))))
-  pdui <- dapars_orig[,grepl('PDUI', colnames(dapars_orig))]
-  colnames(pdui) <- colnames(d_long)
-  pdui <- pdui[row.names(d_long),]
-  pdui_impute <- t(apply(pdui, 1, FUN = function(x){x[is.na(x)] = mean(x, na.rm =T); x}))
-  
-  return(list(deg= test, long = d_long, gene_res = gene_res, short = d_short, df = dapars_orig, pdui = pdui, pdui_imp = pdui_impute, gene_universe = all_genes))
 }
 
 
@@ -2316,18 +1693,7 @@ find_key_gs <- function(res, keys = NULL, key_length = 5, alpha = 0.1) {
 }
 
 
-addSmallLegend <- function(myPlot, pointSize = 1.5, textSize = 7, spaceLegend = 0.3) {
-  myPlot +
-    guides(
-      shape = guide_legend(override.aes = list(size = pointSize)),
-      color = guide_legend(override.aes = list(size = pointSize))
-    ) +
-    theme(
-      legend.title = element_text(size = textSize),
-      legend.text = element_text(size = textSize),
-      legend.key.size = unit(spaceLegend, "lines")
-    )
-}
+
 
 cp_tree_ridge_plot <- function(res, n_cat = 50, nclust = 8, alpha = 0.05, geneSet = NULL) {
 
@@ -2421,3 +1787,61 @@ volcano_plot <- function(res, pval_col = 'fdr', top_genes = NULL, alpha = 0.05, 
     geom_hline(yintercept = -log10(0.05), linetype="dashed",color = "red", size=1)
   return(p)
 }
+
+
+
+custom_cnet_plot <- function(cp_res, top_n_cat = 10, seed=12345, category = NULL, gene_color = NULL, gene_color2 = NULL, layout = 'fr', color_cat_pval = F){
+  cp_res1 <- cp_res
+  if(!is.null(category)){
+    category = intersect(category, row.names(cp_res1@result))
+    cp_res1@result <- cp_res1@result[category,]
+  }
+  top_n_cat <- min(max(length(category), top_n_cat),nrow(cp_res1))
+  cp_res1@pvalueCutoff <- 1
+  cp_res1@qvalueCutoff <- 1
+  pal <- c(rev(c(colorRampPalette(brewer.pal(9, 'Blues'))(32)[1:16],colorRampPalette(brewer.pal(9, 'Blues'))(128)[64:128])), 
+           c(colorRampPalette(brewer.pal(9, 'Reds'))(32)[1:16],colorRampPalette(brewer.pal(9, 'Reds'))(128)[64:128]))
+  set.seed(seed)
+  plot1 <- cnetplot( cp_res1, showCategory = top_n_cat, foldChange = gene_color, layout = layout, node_label = 'none')+
+    scale_colour_gradientn(name = expression('Log'['2']*'FC'), limits= c(-4, 4), 
+                           colours = pal, 
+                           na.value = 'black')
+  cat_df <- plot1$data[1:top_n_cat,]
+  cat_df$qval <- cp_res@result[match(cat_df$name, cp_res@result$Description),]$qvalue
+  cat_df$qval[cat_df$qval > 0.1] <- NA
+  if(!color_cat_pval){
+    plot1 <- plot1+ggnewscale::new_scale_color() +
+      ggraph::geom_node_point(aes_(size=~size), data = cat_df, color = 'black') + 
+      scale_size(limits = c(1,150), breaks = c(10,20,40,80), range = c(1,5))
+  }
+  plot1$data$name <- stringr::str_wrap(plot1$data$name, 25)
+  plot1 <- plot1+ggraph::geom_node_text(aes_(label=~name), data = plot1$data[1:top_n_cat,], size = 3, bg.color = "white", repel=TRUE)
+  
+  
+  if(!is.null(gene_color2)){
+    plot2 <- plot1
+    plot2$data$color[-c(1:top_n_cat)] <- gene_color2[plot1$data$name[-c(1:top_n_cat)]]
+    
+  }
+  if(color_cat_pval){
+    plot1 <- plot1+ggnewscale::new_scale_color() +
+      ggraph::geom_node_point(aes_(color=~qval, size=~size), data = cat_df) + 
+      scale_size(limits = c(1,150), breaks = c(10,20,40,80), range = c(1,5)) +
+      scale_colour_gradientn(name = "FDR", na.value = 'black', colours = colorRampPalette(rev(brewer.pal(9,  'Purples')))(255)[0:200], 
+                             limits= c(0, 0.1), breaks = c(0,2.5e-2,  5e-2, 7.5e-2, 1e-1),  oob = scales::oob_squish)#+
+    #theme(legend.box = "horizontal", legend.position="bottom")
+    #theme(plot.margin=unit(c(0,0,0,0),"mm"), aspect.ratio = 1)
+    if(!is.null(gene_color2)){
+      plot2 <- plot2+ggnewscale::new_scale_color() +
+        ggraph::geom_node_point(aes_(color=~qval, size=~size), data = cat_df) + 
+        scale_size(limits = c(1,150), breaks = c(10,20,40,80), range = c(1,5),) +
+        scale_colour_gradientn(name = "FDR",na.value = 'black', 
+                               colours = colorRampPalette(rev(brewer.pal(9,  'Purples')))(255)[0:200], limits= c(0, 0.1), breaks = c(0, 2.5e-2,  5e-2, 7.5e-2, 1e-1), 
+                               oob = scales::oob_squish)#+
+      # theme(legend.box = "vertical", legend.position="bottom")
+    }
+  }
+  return(list(plot1 = plot1, plot2 = plot2))
+}
+
+#'graphopt' 'fr' 'kk' 'drl'  'lgl'
