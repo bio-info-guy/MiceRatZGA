@@ -4,6 +4,7 @@ suppressPackageStartupMessages({
   library(betareg)
   library(biomaRt)
   library(clusterProfiler)
+  library(ComplexHeatmap)
   library(cowplot)
   library(data.table)
   library(DEXSeq)
@@ -36,6 +37,7 @@ suppressPackageStartupMessages({
   library(pbapply)
   library(pcaMethods)
   library(qvalue)
+  library(QoRTs)
   library(RColorBrewer)
   library(ReactomePA)
   library(reshape2)
@@ -103,6 +105,78 @@ get_qorts_summary <- function(directory, file_name = "QC.summary.txt") {
 
   return(summary0)
 }
+
+
+plot_qorts <- function(res=NULL,
+                       dirc=NULL, 
+                       qorts=NULL, 
+                       plot_types = c('biotype.rates',
+                                      'chrom.type.rates', 
+                                      'clipping', 
+                                      'dropped.rates', 
+                                      'gene.assignment.rates', 
+                                      'genebody.coverage',
+                                      'genebody.coverage.UMQuartile',
+                                      'mapping.rates',
+                                      'insert.size'),
+                       sep = 'condition',
+                       plot_path = './qort_plot.pdf', colorby_colors = NULL
+                       ){
+  if(!is.null(res)){
+    res = res
+    qorts = res@decoder
+  }else{
+    res <- read.qc.results.data(infile.dir = dirc, decoder=qorts, autodetectMissingSamples = TRUE, debugMode = F, calc.DESeq2 = T, calc.edgeR = T)
+  }
+  #print(qorts$condition)
+  colorby <- qorts[res@decoder$unique.ID,sep]
+  names(colorby) <- res@decoder$unique.ID
+  #print(colorby)
+  if(!is.null(coorby_colors)){
+  all_plot <- build.plotter.advanced(res, colorBy = as.character(colorby), color.title = 'cellType', plotter.params = list(contrasting.colors = colorby_colors[sort(as.character(unique(colorby)))]))
+  }else{
+    all_plot <- build.plotter.advanced(res, colorBy = as.character(colorby), color.title = 'cellType')
+    
+  }
+  group_list = list()
+  for(c in unique(colorby)){
+    if(!is.null(colorby_colors)){
+      group_list[[c]] = build.plotter.advanced(res, plotter.params = list(std.color = colorby_colors[c]), highlightBy = colorby, highlight = c , highlightTitle.singular = 'Condition', outgroup.title = 'Others')
+    }else{
+    group_list[[c]] = build.plotter.advanced(res, highlightBy = colorby, highlight = c , highlightTitle.singular = 'Condition', outgroup.title = 'Others')
+    }
+    }
+  pdf(plot_path)
+  plot.new()
+  makePlot.legend.box(all_plot)
+  for(p in plot_types){
+    if(p == 'biotype.rates'){
+      params = '(plotter, count.type = "unambigOnly", showTypes = c("protein_coding", "ncRNA", "rRNA", "pseudogene", "UNK"))'
+    }else{
+      params = '(plotter)'
+    }
+    par(mfrow=c(1,1))
+    plotter = all_plot
+    eval(parse(text=paste("makePlot.", p,params, sep="")))
+    
+    par(mfrow=c(2,2))
+    for(c in names(group_list)){
+      plotter = group_list[[c]]
+      eval(parse(text=paste("makePlot.", p, params, sep="")))
+    }
+  }
+  
+  #makePlot.biotype.rates(all_plot)
+  #makePlot.chrom.type.rates(all_plot)
+  #makePlot.clipping(all_plot)
+  #makePlot.dropped.rates(all_plot)
+  #makePlot.gene.assignment.rates(all_plot)
+  #makePlot.genebody.coverage(all_plot)
+  #makePlot.genebody.coverage.UMQuartile(all_plot)
+  #makePlot.mapping.rates(all_plot)
+  dev.off()
+}
+
 
 
 read_expression <- function(dir, mode = "salmon", tx2gene = NULL, tpmType = "no", dropInfReps = T) {
@@ -235,35 +309,6 @@ read_rnasplice_dex_dtu <- function(dexseq_ds_rds, drim_seq_filt_rds) {
 }
 
 
-
-prepareMeta <- function(cds, dirc, filter_conditions = vector(), filter_samples = c(), QC = F) {
-  dot_color <- DOT_COLOR
-  stat <- read.table(paste(FILES, dirc, "meta.tsv", sep = "/"), header = TRUE, row.names = 1)
-  cells <- row.names(stat)
-  ct <- get_qorts_summary(paste(FILES, dirc, "/QCData/hisat/", sep = "/"), file_name = "QC.geneCounts.formatted.for.DESeq.txt.gz")
-  ct <- ct[1:(nrow(ct) - 5), ]
-  spike.reads <- ct[which(grepl("ERCC", row.names(ct))), ]
-  bio.reads <- ct[which(!grepl("ERCC", row.names(ct))), ]
-  spike.rate <- round(colSums(spike.reads) / colSums(ct), 5)
-  names(spike.rate) <- colnames(ct)
-  stat$spike.rate <- spike.rate[row.names(stat)]
-  eff.reads.ratio <- (colSums(ct) - colSums(spike.reads)) / (stat[colnames(ct), ]$input.read.pair.count * (1 - stat[colnames(ct), ]$spike.rate))
-  names(eff.reads.ratio) <- colnames(ct)
-  stat$eff.reads.ratio <- eff.reads.ratio[row.names(stat)]
-  stat$num_bio_reads <- colSums(bio.reads)[row.names(stat)]
-  stat$sensitivity <- colSums(bio.reads > 0)[row.names(stat)]
-  meta <- data.frame(stat[cells, ])
-  remove_samples <- union(filter_samples, row.names(meta[meta$condition %in% filter_conditions, ]))
-  meta <- meta[!row.names(meta) %in% remove_samples, ]
-  meta$color <- dot_color[meta$cellType]
-  cds$bio.reads <- bio.reads
-  cds$meta <- meta
-  if (QC) {
-    cds$meta <- subset(cds$meta, sensitivity > 500 & complexity > 0.01 & gap < 1.5 & eff.reads.ratio > 0.05)
-    cds$meta <- subset(cds$meta, intraDiffinterRank > 1)
-  }
-  return(cds)
-}
 
 prepareCount <- function(cds, dirc) {
   cells <- row.names(cds$meta)
@@ -466,11 +511,8 @@ sample_PCA <- function(cds,
         axis.text.y = element_text(size = 16),
         axis.text.x = element_text(size = 16),
         legend.position = legend.position,
-        legend.justification = c("right", "top"),
-        legend.box.just = "right",
         legend.text = element_text(size = 12),
         legend.title = element_blank(),
-        legend.margin = margin(6, 10, 6, 6),
         legend.box.background = element_rect(color = "black"),
         legend.key.size = unit(0.1, "lines")
       )
@@ -502,7 +544,6 @@ sample_PCA <- function(cds,
         geom_point(size = point_size, alpha = alpha) +
         xlab(axis_x) +
         ylab(axis_y) +
-        coord_fixed() +
         theme0 +
         ggtitle(main)
     }
@@ -511,7 +552,7 @@ sample_PCA <- function(cds,
     } else {
       plot0 <- plot0
     }
-  } else {
+  }else{ # 3D plots in plotly
     test <-
       data.frame(test[, c(1, 2, 3)], condition = as.factor(meta[[color_by]]))
     colnames(test) <- c("PC1", "PC2", "PC3", "condition")
@@ -1713,7 +1754,8 @@ cp_tree_ridge_plot <- function(res, n_cat = 50, nclust = 8, alpha = 0.05, geneSe
   tree <- res_tree
   res_tree$layers[c(7, 8)] <- NULL
   res_tree$layers[c(3, 4)] <- NULL
-  res_ridge <- addSmallLegend(ridgeplot(res, showCategory = min(n_cat, nrow(res@result))) + 
+  res@result$qvalues <- res@result$qvalue
+  res_ridge <- addSmallLegend(ridgeplot(res, showCategory = min(n_cat, nrow(res@result)), fill = 'qvalues') + 
                                 scale_fill_viridis_c(name = 'FDR', limits= c(0, 0.06), breaks = c(0.01, 0.02, 0.03, 0.04,0.05))+
     theme(axis.title.y = element_blank(), axis.text.y = element_blank()) + xlim(c(-4, 4)) + 
       geom_vline(xintercept = 0, linetype = "dashed", color = "red") + 
