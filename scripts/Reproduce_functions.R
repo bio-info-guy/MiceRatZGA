@@ -1,39 +1,43 @@
 # Load packages
 suppressPackageStartupMessages({
-  library(DEXSeq)
-  library(DRIMSeq)
-  library(GGally)
-  library(GenomicFeatures)
-  library(MAST)
-  library(MKmisc)
-  library(NMF)
-  library(RColorBrewer)
-  library(ReactomePA)
+  library(aplot)
   library(betareg)
   library(biomaRt)
   library(clusterProfiler)
   library(cowplot)
   library(data.table)
+  library(DEXSeq)
   library(doParallel)
   library(dplyr)
+  library(DRIMSeq)
   library(edgeR)
+  library(GenomicFeatures)
+  library(GenomicRanges)
+  library(GGally)
   library(ggbeeswarm)
   library(ggfortify)
   library(ggplot2)
   library(ggpubr)
   library(ggraph)
   library(ggrepel)
+  library(ggtree)
   library(grid)
   library(gridExtra)
   library(heatmap3)
   library(knitr)
   library(lmtest)
+  library(MAST)
   library(meshes)
+  library(MKmisc)
   library(msigdbr)
+  library(NMF)
+  library(nVennR)
   library(pathview)
   library(pbapply)
   library(pcaMethods)
   library(qvalue)
+  library(RColorBrewer)
+  library(ReactomePA)
   library(reshape2)
   library(reticulate)
   library(rsvd)
@@ -44,13 +48,6 @@ suppressPackageStartupMessages({
   library(trackViewer)
   library(tximport)
   library(umap)
-  require(GenomicRanges)
-  require(ReactomePA)
-  require(aplot)
-  require(clusterProfiler)
-  require(ggtree)
-  require(meshes)
-  require(trackViewer)
 })
 reticulate::use_condaenv("scvelo")
 scv <- reticulate::import("scvelo")
@@ -882,24 +879,24 @@ mast_diff <- function(obj = NULL, plot = F, ct = NULL, meta = NULL, FCThresh = l
 # get organism stuff for clusterprofiler
 get_organism_items <- function(organisms){
   if(organisms == 'mouse'){
-    require(org.Mm.eg.db)
+    library(org.Mm.eg.db)
     orgdb = org.Mm.eg.db
     orgabv = 'mmu'
     orgname = "Mus musculus"
   }else if(organisms == 'rat'){
-    require(org.Rn.eg.db)
+    library(org.Rn.eg.db)
     orgdb = org.Rn.eg.db
     orgabv = 'rno'
     orgname = "Rattus norvegicus"
   }
   else if(organisms == 'celegans'){
-    require(org.Ce.eg.db)
+    library(org.Ce.eg.db)
     orgdb = org.Ce.eg.db
     orgabv = 'cel'
     orgname = 'Caenorhabditis elegans'
   }
   else if(organisms == 'human'){
-    require(org.Hs.eg.db)
+    library(org.Hs.eg.db)
     orgdb = org.Hs.eg.db
     orgabv = 'hsa'
     orgname = 'Homo sapiens'
@@ -1676,23 +1673,6 @@ plotDEXSeqDTU <- function(expData = NULL, geneID = NULL, samps = NULL, isProport
   }
   p
 }
-
-find_key_gs <- function(res, keys = NULL, key_length = 5, alpha = 0.1) {
-  if (is.null(keys)) {
-    return(NULL)
-  }
-  if (length(key_length) != length(keys)) {
-    key_length <- rep(key_length[1], length(keys))
-  }
-  res <- subset(res, qvalue < alpha)
-  gs <- unique(do.call(c, lapply(1:length(keys), function(x) {
-    ids <- res$ID[grepl(regex(keys[x]), res$Description, ignore.case = T)]
-    ids <- ids[1:min(length(ids), key_length[x])]
-  })))
-  return(gs)
-}
-
-
 
 
 cp_tree_ridge_plot <- function(res, n_cat = 50, nclust = 8, alpha = 0.05, geneSet = NULL) {

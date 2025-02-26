@@ -609,7 +609,20 @@ list2graph <- function(inputList) {
 }
 
 
-
+find_key_gs <- function(res, keys = NULL, key_length = 5, alpha = 0.1) {
+  if (is.null(keys)) {
+    return(NULL)
+  }
+  if (length(key_length) != length(keys)) {
+    key_length <- rep(key_length[1], length(keys))
+  }
+  res <- subset(res, qvalue < alpha)
+  gs <- unique(do.call(c, lapply(1:length(keys), function(x) {
+    ids <- res$ID[grepl(regex(keys[x]), res$Description, ignore.case = T)]
+    ids <- ids[1:min(length(ids), key_length[x])]
+  })))
+  return(gs)
+}
 
 ## Deprecated differential UTR function, now using deg_utr2
 # deg_utr <- function(file, ct, compare, meta, impute = F, method = 'fisher.test', combine_p = 'fisher'){
