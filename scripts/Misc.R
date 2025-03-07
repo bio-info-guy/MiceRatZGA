@@ -624,6 +624,42 @@ find_key_gs <- function(res, keys = NULL, key_length = 5, alpha = 0.1) {
   return(gs)
 }
 
+
+# number of ortho genes
+# Function to convert genes from organism1 to orthology_class to organism2, ie. Rat to OrthoClass to Mice; results are interpreted as mice genes
+# requires named list of orthology_class to organism 2 genes, currently only allow one gene per orthology class for organism 2
+# requires named list of organism 1 genes to orthology_class, multiple organism 1 genes can be in a orthology class
+# The current limitation accounts for the following two cases of orthology:
+## org_1_genes (one) --> org2_genes (many)
+## org_1_genes (one) --> org2_genes (one)
+# But does not account for:
+## org_1_genes (many) --> org2_genes (many)
+## org_1_genes (many) --> org2_genes (one)
+
+ortho_convert <- function(genes, org_to_ortho, ortho_2_org2){
+  #no_ortho <- setdiff(genes, names(org_to_ortho))
+  #ortho <- intersect(genes, names(org_to_ortho))
+  #org2_gene <- ortho_2_org2[as.character(org_to_ortho[ortho])]
+  
+  #return(list(no_ortho = no_ortho, ortho = ortho, conv_genes = org2_gene))
+  res <- ortho_2_org2[as.character(org_to_ortho[genes])]
+  res[is.na(res)] <- paste(genes[is.na(res)], '_no_ortho', sep = '')
+  res
+}
+
+# convert rat gene names to mice ortholog and intersect with list of mice genes
+rat_2_mice_intersect <- function(rat_genes, mice_genes){
+  conv <- ortho_convert(rat_genes, Rat2HomClass, HomClass2Mouse)
+  intsct_genes <- intersect(conv, mice_genes)
+}
+
+
+rat_2_mice_wrapper <- function(rat_genes){
+  conv <- ortho_convert(rat_genes, Rat2HomClass, HomClass2Mouse)
+}
+
+
+
 ## Deprecated differential UTR function, now using deg_utr2
 # deg_utr <- function(file, ct, compare, meta, impute = F, method = 'fisher.test', combine_p = 'fisher'){
 #   ##read in the new dapars file that includes long. short and PDUI values

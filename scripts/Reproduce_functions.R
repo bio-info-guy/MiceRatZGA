@@ -50,6 +50,7 @@ suppressPackageStartupMessages({
   library(trackViewer)
   library(tximport)
   library(umap)
+  library(xlsx)
 })
 reticulate::use_condaenv("scvelo")
 scv <- reticulate::import("scvelo")
@@ -104,6 +105,48 @@ get_qorts_summary <- function(directory, file_name = "QC.summary.txt") {
   }))
 
   return(summary0)
+}
+
+
+write_to_xlsx <- function(tables, file_name, table_names = NULL, overwrite = T){
+  wb <- createWorkbook()
+  
+  if(is.data.table(tables)){
+    tables <- as.data.frame(tables)
+  }
+  if(is.data.frame(tables)){
+    if(is.null(table_names)){
+      table_names <- 'sheet1'
+    }
+    addWorksheet(wb, table_names)
+    
+    # Write data to the sheet
+    writeData(wb, table_names, tables)
+    
+
+  }
+  else if(is.list(tables)){
+    if(is.null(table_names) & is.null(names(tables))){
+      names(tables) <- paste('sheet', 1:length(tables), sep = '')
+      table_names <- names(tables)
+    }
+    else if(is.null(table_names)){
+      table_names <- names(tables)
+    }
+    else if(is.null(names(tables))){
+      names(tables) <- table_names
+    }
+    
+    for(i in seq_len(length(tables))){
+      
+        addWorksheet(wb, table_names[i])
+        
+        # Write data to the sheet
+        writeData(wb, table_names[i], tables[[i]])
+      
+    }
+  }
+  saveWorkbook(wb, file_name, overwrite = overwrite)
 }
 
 
@@ -1864,6 +1907,83 @@ custom_cnet_plot <- function(cp_res, top_n_cat = 10, seed=12345, category = NULL
     }
   }
   return(list(plot1 = plot1, plot2 = plot2))
+}
+
+
+
+
+make_very_custom_DAP_vs_DEG_composite_plot <- function(dap_res, deg_res){
+  # dap_res and deg_res are the data frames containing final results of either dap and deg respectively, row.names of both are gene_names
+  ## Compare all genes that have DAP analysis D+PDUI change vs Log2FC, no correlation but association
+  genes_shared <- intersect(row.names(dap_res), row.names(deg_res))
+
+  utr_v_deg2 <- data.frame(row.names = genes_shared, utr=dap_res[genes_shared, 'mean.diff'], 
+                           deg = deg_res[genes_shared, 'Log2FC']
+  )
+  
+  utr_v_deg2$deg_sig <- 'Non'
+  utr_v_deg2[intersect(genes_shared, row.names(subset(deg_res, fdr < 0.05 & Log2FC > log2(2)))), 'deg_sig'] <- 'DEG up'
+  utr_v_deg2[intersect(genes_shared, row.names(subset(deg_res, fdr < 0.05 & Log2FC < -log2(2)))), 'deg_sig'] <- 'DEG down'
+  
+  utr_v_deg2$utr_sig <- 'Non'
+  utr_v_deg2[intersect(genes_shared, row.names(subset(dap_res, mean.diff < -0.2 & fdr < 0.05))), 'utr_sig'] <- 'Shortened UTR'
+  utr_v_deg2[intersect(genes_shared, row.names(subset(dap_res, mean.diff > 0.2 & fdr < 0.05))), 'utr_sig'] <- 'Lengthened UTR'
+  
+  
+  utr_v_deg2$utr_sig2 <- 'Non'
+  utr_v_deg2[intersect(genes_shared, row.names(subset(dap_res, abs(mean.diff) > 0.2 & fdr < 0.05))), 'utr_sig2'] <- 'Sig DAP'
+  
+  
+  # code for producing combined density plots with different legends and color groupings
+  pmain <- ggplot(utr_v_deg2, aes(x = utr, y = deg, color = deg_sig, alpha = utr_sig, size = utr_sig2)) +
+    geom_point(aes(fill = utr_sig)) + theme_classic()+
+    scale_color_manual(values=c('DEG down'="blue",'Non'= "grey",'DEG up'="red"))+ 
+    theme(legend.position = 'none',
+          axis.text.x = element_text(size=19, color = 'black'),
+          axis.text.y = element_text(size=19, color = 'black'),
+          axis.title.x = element_text(size = 22),
+          axis.title.y = element_text(size = 22))+
+    xlab('UTR PDUI difference')+
+    ylab(expression('Log'[2]*'FC'))+
+    geom_hline(yintercept=0, linetype="dashed", color = "black", size = 1, alpha = 0.8)+
+    geom_vline(xintercept=c(-0.2, 0.2), linetype="dashed", color = "black", size = 1, alpha= 0.8)+
+    scale_alpha_manual(values = c('Shortened UTR'=1, 'lengthened UTR'=1, 'Non' = 0.04))+
+    scale_size_manual(values = c('Sig DAP'=1.5, 'Non'=0.5))+
+    annotate('text', x=0.5, y=2.4, size = 6, label = paste('PCC: ', round(cor(utr_v_deg2$utr, utr_v_deg2$deg), 3), sep = ''))+
+    geom_hline(yintercept = c(1,-1), color = c('red', 'blue'), linetype = 'dashed')
+  
+  # Marginal densities along x axis
+  xdens <- axis_canvas(pmain, axis = "x") +
+    geom_density(data = subset(utr_v_deg2, deg_sig != 'Non'), aes(x = utr, fill = deg_sig),
+                 alpha = 0.7, size = 0.2) +
+    scale_fill_manual(values=c('DEG down'="blue",'DEG up'="red"))+ theme(legend.position = 'none')
+  # Marginal densities along y axis
+  # Need to set coord_flip = TRUE, if you plan to use coord_flip()
+  ydens <- axis_canvas(pmain, axis = "y", coord_flip = TRUE) +
+    geom_density(data = subset(utr_v_deg2, utr_sig != 'Non'), aes(x = deg, fill = utr_sig),
+                 alpha = 0.7, size = 0.2) + theme(legend.position = 'none')+
+    coord_flip() +
+    scale_fill_manual(values=c('Lengthened UTR'="#008331", 'Shortened UTR'='violet'))
+  p1 <- insert_xaxis_grob(pmain, xdens, grid::unit(.2, "null"), position = "top")
+  p2 <- insert_yaxis_grob(p1, ydens, grid::unit(.2, "null"), position = "right")
+  
+  legend_y <- cowplot::get_legend( ggplot(subset(utr_v_deg2, !is.na(utr_sig)), aes(x = utr, fill=utr_sig))+
+                                     geom_density() + theme(legend.margin = margin(1, 130, -30, 1), 
+                                                            legend.title = element_text(size = 14), 
+                                                            legend.text=element_text(size=14))+
+                                     scale_fill_manual(values=c('Lengthened UTR'="#008331", 'Shortened UTR'='violet'))+
+                                     guides(fill = guide_legend(ncol = 1, title = 'Significant DAP')))
+  
+  legend_x <- cowplot::get_legend( ggplot(subset(utr_v_deg2, !is.na(deg_sig)), aes(x = utr, fill=deg_sig))+
+                                     geom_density() +theme(legend.margin = margin(1, 150, 1, 1), 
+                                                           legend.title = element_text(size = 14),
+                                                           legend.text=element_text(size=14))+
+                                     scale_fill_manual(values=c('DEG down'="blue",'DEG up'="red"))+
+                                     guides(fill = guide_legend(ncol = 1, title = 'Significant DEG')))
+  
+  
+  utr_deg_mix_plot <- plot_grid(p2, plot_grid(legend_x, legend_y, ncol = 1), nrow = 1, rel_widths = c(1,0.3))
+  return(utr_deg_mix_plot)
 }
 
 #'graphopt' 'fr' 'kk' 'drl'  'lgl'
