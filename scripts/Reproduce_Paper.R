@@ -406,8 +406,8 @@ nlrp4g_mouse <- plot_range_coverage(range = 'NC_000075.7:124,117,990-124,121,100
 
 oog1_mouse <- plot_range_coverage(txdb=mouse_gtf,  bw_file_list= c('./dataset/mouse_apa_res/MF.sf.bw', './dataset/mouse_apa_res/MU.sf.bw'), log = T, cols = DOT_COLOR[c('mouseZygote', 'mouseEgg')], cell_names = c('Mouse zygote', 'Mouse oocyte'), file_name_suffix = 'mouse', gene_name = 'Oog1', y_lim = c(0.08, 0.73))
 oog1_rat <- plot_range_coverage( txdb=rat_gtf, bw_file_list= c('./dataset/rat_apa_res/RF.sf.bw', './dataset/rat_apa_res/RU.sf.bw'), log = T, cols = DOT_COLOR[c('ratZygote', 'ratEgg')], cell_names = c('Rat zygote', 'Rat oocyte'), file_name_suffix = 'rat', gene_name = 'Oog1', y_lim = c(0.08, 0.73))
-test_vp <- plot_range_coverage(range = 'NC_000073.7:10448500-10464076', txdb=mouse_gtf, c('./dataset/mouse_apa_res/MF.sf.bw', './dataset/mouse_apa_res/MU.sf.bw'), log = T, cols = DOT_COLOR[c('mouseZygote', 'mouseEgg')], cell_names = c('Mouse zygote', 'Mouse oocyte'), file_name_suffix = 'mouse', y_lim = c(0.08, 0.73), gene_name = 'Nlrp4b')
-test_vp <- plot_range_coverage(range= 'NC_051336.1:70426100-70446800', txdb=rat_gtf, bw_file_list= c('./dataset/rat_apa_res/RF.sf.bw', './dataset/rat_apa_res/RU.sf.bw'), log = T, cols = DOT_COLOR[c('ratZygote', 'ratEgg')], cell_names = c('Rat zygote', 'Rat oocyte'), file_name_suffix = 'rat', y_lim = c(0.08, 0.73))
+Nlrp4b_mouse <- plot_range_coverage(range = 'NC_000073.7:10448500-10464076', txdb=mouse_gtf, c('./dataset/mouse_apa_res/MF.sf.bw', './dataset/mouse_apa_res/MU.sf.bw'), log = T, cols = DOT_COLOR[c('mouseZygote', 'mouseEgg')], cell_names = c('Mouse zygote', 'Mouse oocyte'), file_name_suffix = 'mouse', y_lim = c(0.08, 0.73), gene_name = 'Nlrp4b')
+Nlrp4b_rat <- plot_range_coverage(range= 'NC_051336.1:70426100-70446800', txdb=rat_gtf, bw_file_list= c('./dataset/rat_apa_res/RF.sf.bw', './dataset/rat_apa_res/RU.sf.bw'), log = T, cols = DOT_COLOR[c('ratZygote', 'ratEgg')], cell_names = c('Rat zygote', 'Rat oocyte'), file_name_suffix = 'rat', y_lim = c(0.08, 0.73))
 
 celltype_bar_legend <- get_legend(ggplot(data.frame(y=c(0.1, 0.1, 0.1, 0.1), 
                   x=c(1,2,3,4), 
@@ -517,7 +517,7 @@ stager_mouse_ora <- enrich_CP(subset(dexseq_mouse_stageR, gene < 0.05)$geneID, u
 stager_rat_ora <- enrich_CP(subset(dexseq_rat_stageR, gene < 0.05)$geneID, universe = dexseq_rat_stageR$geneID, organisms = 'rat', full_combine = T)
 
 #make dotplots
-rat_dtu_dot <- test_dotplot(stager_rat_ora$combined_full, showCategory=10, color='pvalue') 
+rat_dtu_dot <- dotplot(stager_rat_ora$combined_full, showCategory=10, color='pvalue') 
 rat_dtu_dot <- rat_dtu_dot + theme(axis.text.y = element_text(angle = 0, vjust = 0.5, hjust=0.5, size = 12, colour = ifelse(rat_dtu_dot$data[order(rat_dtu_dot$data$GeneRatio),'qvalue'] < 0.05, 'red', 'black')), 
                                    axis.text.x = element_text(angle = 30, vjust = 0.5, hjust=0.5, size = 10), 
                                    legend.text = element_text(size=8), 
@@ -530,7 +530,7 @@ rat_dtu_dot <- rat_dtu_dot + theme(axis.text.y = element_text(angle = 0, vjust =
   scale_size(range=c(3,8), limits = c(5,300))+annotate("text", label = 'Rat', x=0.03, y=10, size = 8)
 ggsave('Rat_dex_dtu_GOBP.png',plot = rat_dtu_dot, width = 5, height = 5.5)
 
-mouse_dtu_dot <- test_dotplot(stager_mouse_ora$combined_full, showCategory=10, color ='qvalue') 
+mouse_dtu_dot <- dotplot(stager_mouse_ora$combined_full, showCategory=10, color ='qvalue') 
 mouse_dtu_dot <- mouse_dtu_dot + theme(axis.text.y = element_text(angle = 0, vjust = 0.5, hjust=0.5, size = 12, colour = ifelse(mouse_dtu_dot$data[order(mouse_dtu_dot$data$GeneRatio),'qvalue'] < 0.05, 'red', 'black')), 
                                        axis.text.x = element_text(angle = 30, vjust = 0.5, hjust=0.5, size = 8), 
                                        legend.text = element_text(size=8), 
@@ -685,7 +685,7 @@ ggsave('utr_v_deg_scatter_rat.png', plot = utr_deg_mix_plot_rat , width = 8, hei
 
 
 # GO Bp DAP mouse genes dotplot
-DAP_ora_dotplot <- test_dotplot(utr_mouse_sf_st25_down$combined_full, showCategory=10, color='qvalue') +
+DAP_ora_dotplot <- dotplot(utr_mouse_sf_st25_down$combined_full, showCategory=10, color='qvalue') +
   theme(axis.text.y = element_text(angle = 0, vjust = 0.5, hjust=0.5, size = 8, colour =rep('red', 10)), 
   axis.text.x = element_text(angle = 30, vjust = 0.5, hjust=0.5, size = 8), 
   legend.text = element_text(size=8), legend.key.size = unit(1, 'cm'),  
